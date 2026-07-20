@@ -1,0 +1,12 @@
+# Secrets — never commit API keys
+.env
+
+# Run artifacts
+output/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+.pytest_cache/
