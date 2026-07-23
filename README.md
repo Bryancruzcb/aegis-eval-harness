@@ -48,10 +48,25 @@ Configure a provider in `.env`. You have two easy options:
 ```env
 GEMINI_API_KEY=your_key_here
 TARGET_PROVIDER=gemini
-TARGET_MODEL=gemini-2.5-flash
+TARGET_MODEL=gemini-3.5-flash
 JUDGE_PROVIDER=gemini
-JUDGE_MODEL=gemini-2.5-flash
+JUDGE_MODEL=gemini-3.5-flash
 ```
+
+> **Free-tier note.** Model availability and quota vary by key. Older flash
+> models (1.5/2.0, and even 2.5-flash for newly created keys) return
+> `404 "no longer available to new users"`, and free-tier daily quota on the
+> full models is small — a few full suite runs can exhaust it and you'll see
+> `429` errors (which the harness reports as *errors*, not failures). Two easy
+> mitigations: run against a `-lite` model such as `gemini-flash-lite-latest`
+> (higher free limits), and keep `MAX_CONCURRENT_REQUESTS=1` so requests don't
+> burst past the per-minute cap. To see exactly what a key can use:
+> ```python
+> from google import genai
+> for m in genai.Client(api_key="...").models.list():
+>     if "generateContent" in (m.supported_actions or []):
+>         print(m.name)
+> ```
 
 **Local, no key (via [Ollama](https://ollama.com)):**
 ```bash

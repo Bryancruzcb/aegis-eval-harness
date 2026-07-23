@@ -67,7 +67,7 @@ def is_retryable_error(exc: BaseException) -> bool:
 retryable = retry(
     retry=retry_if_exception(is_retryable_error),
     stop=stop_after_attempt(config.MAX_RETRIES),
-    wait=wait_exponential(multiplier=1, min=1, max=20),
+    wait=wait_exponential(multiplier=1, min=1, max=config.RETRY_MAX_WAIT),
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True,
 )
