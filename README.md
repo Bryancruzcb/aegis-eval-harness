@@ -1,5 +1,7 @@
 # AegisEval
 
+[![CI](https://github.com/Bryancruzcb/aegis-eval-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/Bryancruzcb/aegis-eval-harness/actions/workflows/ci.yml)
+
 A small, asynchronous harness for evaluating LLM applications on three axes:
 
 - **Functional** — does it answer normal requests helpfully and stay on-topic?
