@@ -290,18 +290,20 @@ async def run_suite(tag_filter=None, category_filter=None, technique_filter=None
     except Exception as e:
         logger.error(f"Failed to load test_cases.json: {e}")
         return {"error": str(e)}
+    # Taken from the data as loaded, so the --technique warning below still lists
+    # something useful when --tag/--category already emptied the selection.
+    available_techniques = sorted({c["technique"] for c in cases})
     if category_filter:
         cases = [c for c in cases if c["category"] == category_filter]
     if tag_filter:
         cases = [c for c in cases if tag_filter in c.get("tags", [])]
     if technique_filter:
-        available = sorted({c["technique"] for c in cases})
         cases = [c for c in cases if c["technique"] == technique_filter]
         if not cases:
             # spec 4.8: warn with the valid techniques, then proceed empty.
             logger.warning(
                 f"--technique '{technique_filter}' matched no test cases. "
-                f"Valid techniques in the selected data: {', '.join(available)}. "
+                f"Valid techniques in the selected data: {', '.join(available_techniques)}. "
                 "Proceeding with an empty selection."
             )
     logger.info(f"Selected {len(cases)} test case(s).")

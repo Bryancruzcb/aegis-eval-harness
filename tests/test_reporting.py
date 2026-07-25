@@ -111,6 +111,20 @@ def test_multi_turn_transcript_uses_conversation_box():
     assert "User Prompt / Attack" not in html
 
 
+def test_two_box_prompt_shows_only_the_first_turn():
+    # A MULTI-TURN case that breaks on turn 1 has a 2-message transcript and so
+    # takes the two-box fallback. ``prompt`` there is every turn joined with
+    # newlines, so the box must be sourced from the transcript's first user
+    # message instead - otherwise later turns show next to the turn-1 reply.
+    html = _html("test_first_turn_only.html",
+                 prompt="turn one\nturn two\nturn three",
+                 transcript=[{"role": "user", "content": "turn one"},
+                             {"role": "assistant", "content": "reply"}])
+    assert "User Prompt / Attack" in html
+    assert "turn one" in html
+    assert "turn two" not in html and "turn three" not in html
+
+
 # --- grader false-positive surfacing (spec 4.3) ------------------------------
 
 def test_false_positive_badge_renders():
@@ -162,6 +176,17 @@ def test_terminal_summary_prints_break_and_fp_rates(capsys):
     assert "Overall Break Rate" in out and "33.0%" in out
     assert "Grader FP Rate" in out and "25.0%" in out
     assert "NOT complementary" in out
+
+
+def test_terminal_summary_omits_caption_when_break_rate_suppressed(capsys):
+    # A benign-only run has no attack runs, so the break-rate line is suppressed
+    # and the caption explaining it has nothing to explain.
+    payload = _payload()
+    payload["summary"]["overall_break_rate"] = None
+    print_terminal_summary(payload)
+    out = capsys.readouterr().out
+    assert "Overall Break Rate" not in out
+    assert "NOT complementary" not in out
 
 
 def test_terminal_summary_survives_absent_rate_keys(capsys):

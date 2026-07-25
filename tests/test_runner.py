@@ -252,6 +252,17 @@ async def test_technique_no_match_warns_and_lists_valid_techniques(caplog):
     assert "no-such-technique" in msg and "crescendo" in msg
 
 
+async def test_technique_warning_lists_techniques_even_when_a_filter_emptied_it(caplog):
+    # A --tag/--category filter that already emptied the selection must not
+    # reduce the warning to "Valid techniques in the selected data: ."
+    with caplog.at_level(logging.WARNING, logger="AegisEval.Runner"):
+        await run_suite(tag_filter="no-such-tag", technique_filter="no-such-technique",
+                        query_fn=None, judge_fn=None)
+    msg = " ".join(r.message for r in caplog.records)
+    assert "crescendo" in msg
+    assert "selected data: ." not in msg
+
+
 # --- resilience: an unexpected exception degrades to an error result ----------
 
 

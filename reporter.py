@@ -402,7 +402,7 @@ HTML_TEMPLATE = """
                         {% else %}
                         <div class="detail-box">
                             <div class="detail-title">User Prompt / Attack</div>
-                            <div class="detail-content">{{ tc.prompt }}</div>
+                            <div class="detail-content">{% if tc.transcript is defined and tc.transcript %}{{ tc.transcript[0].content }}{% else %}{{ tc.prompt }}{% endif %}</div>
                         </div>
                         <div class="detail-box">
                             <div class="detail-title">Target Response</div>
@@ -499,7 +499,8 @@ def print_terminal_summary(results_payload: dict):
         print(f"Attack Pass Rate: {summary['attack_pass_rate']}%")
     if summary.get("total_breaks"):
         print(f"Breaks:          {summary['total_breaks']}")
-    if summary.get("overall_break_rate") is not None:
+    break_rate_shown = summary.get("overall_break_rate") is not None
+    if break_rate_shown:
         print(f"Overall Break Rate: {round(summary['overall_break_rate'] * 100, 1)}%"
               f"  (of all evaluated attack runs)")
     if summary.get("benign_false_positives"):
@@ -509,8 +510,9 @@ def print_terminal_summary(results_payload: dict):
               f"  (of evaluated benign cases)")
     print(f"Average Latency: {summary['average_latency_seconds']}s")
     print(f"Total Time:      {summary['total_time_seconds']}s")
-    print("Note: pass_rate is per-CASE take-worst over repeats; overall_break_rate is "
-          "per-RUN. They are NOT complementary.")
+    if break_rate_shown:  # nothing to disambiguate when the rate wasn't printed
+        print("Note: pass_rate is per-CASE take-worst over repeats; overall_break_rate is "
+              "per-RUN. They are NOT complementary.")
     print("=" * 80)
 
     print(f"{'ID':<8} | {'Category':<10} | {'Status':<7} | {'Score':<5} | {'Description'}")
