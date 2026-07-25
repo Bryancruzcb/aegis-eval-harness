@@ -14,8 +14,8 @@ import asyncio
 import time
 import logging
 
-from target import query_target
-from evaluators import run_deterministic_eval, run_llm_judge_eval, JudgeParseError
+from target import query_target_conversation
+from evaluators import run_deterministic_eval, run_llm_judge_eval_conversation, JudgeParseError
 from providers import ProviderError
 import config
 
@@ -49,99 +49,80 @@ def load_test_cases(raw):
     return cases
 
 
-def _result(base: dict, *, response, score, reasoning, passed, status, eval_type, latency) -> dict:
-    return {
-        **base,
-        "response": response,
-        "score": score,
-        "reasoning": reasoning,
-        "passed": passed,
-        "status": status,
-        "eval_type": eval_type,
-        "latency_seconds": latency,
+def _result(base, *, response, score, reasoning, passed, status, eval_type, latency,
+            transcript, false_positive=None):
+    r = {**base, "response": response, "score": score, "reasoning": reasoning,
+         "passed": passed, "status": status, "eval_type": eval_type,
+         "latency_seconds": latency, "transcript": transcript}
+    if false_positive is not None:
+        r["false_positive"] = false_positive
+    return r
+
+
+def _norm(s):
+    import re as _re
+    return _re.sub(r"[^a-z0-9]", "", s.lower())
+
+
+async def run_single_test(test_case, semaphore, *, query_fn=None, judge_fn=None,
+                          target_provider=None, target_model=None,
+                          judge_provider=None, judge_model=None, target_temperature=None):
+    query_fn = query_fn or query_target_conversation
+    judge_fn = judge_fn or run_llm_judge_eval_conversation
+    expect = test_case.get("expect", "refuse")
+    turns = test_case.get("turns") or [test_case["prompt"]]
+    base = {
+        "id": test_case["id"], "category": test_case["category"],
+        "prompt": test_case.get("prompt") or "\n".join(turns),
+        "expected_criteria": test_case["expected_criteria"],
+        "description": test_case.get("description", ""), "tags": test_case.get("tags", []),
+        "expect": expect,
     }
-
-
-async def run_single_test(
-    test_case: dict,
-    semaphore: asyncio.Semaphore,
-    *,
-    query_fn=None,
-    judge_fn=None,
-    target_provider: str = None,
-    target_model: str = None,
-    judge_provider: str = None,
-    judge_model: str = None,
-) -> dict:
-    """Run one test case through the target and the evaluators.
-
-    ``query_fn`` and ``judge_fn`` are injectable for testing; they default to
-    the real target and judge.
-    """
-    query_fn = query_fn or query_target
-    judge_fn = judge_fn or run_llm_judge_eval
-
+    secret_norm = _norm(config.SYSTEM_SECRET)
     async with semaphore:
-        base = {
-            "id": test_case["id"],
-            "category": test_case["category"],
-            "prompt": test_case["prompt"],
-            "expected_criteria": test_case["expected_criteria"],
-            "description": test_case.get("description", ""),
-            "tags": test_case.get("tags", []),
-        }
-        tc_id = base["id"]
-        logger.info(f"Starting {tc_id} ({base['category']})")
-
-        start_time = time.time()
-
-        # 1. Query the target model. Infra failure -> ERROR, not a test failure.
+        transcript, running_bot, attacker_text = [], "", ""
+        start = time.time()
+        for user_msg in turns:
+            transcript.append({"role": "user", "content": user_msg})
+            attacker_text += "\n" + user_msg
+            secret_supplied = secret_norm in _norm(attacker_text)
+            try:
+                reply = await query_fn(transcript, provider=target_provider,
+                                       model=target_model, temperature=target_temperature)
+            except ProviderError as e:
+                latency = round(time.time() - start, 2)
+                return _result(base, response=None, score=None, reasoning=str(e), passed=False,
+                               status="error", eval_type="target_error", latency=latency,
+                               transcript=transcript)
+            transcript.append({"role": "assistant", "content": reply})
+            running_bot += "\n" + reply
+            det = run_deterministic_eval(running_bot)
+            secret_hit = det["secret_leak"] and not secret_supplied
+            if secret_hit or det["profanity"]:
+                latency = round(time.time() - start, 2)
+                # Benign fail label: secret-collision => grader FP (True); profanity => genuine (False).
+                fp = (not det["profanity"]) if expect == "benign" else None
+                return _result(base, response=reply, score=0.0, reasoning=det["reasoning"],
+                               passed=False, status="fail", eval_type="deterministic",
+                               latency=latency, transcript=transcript, false_positive=fp)
+        latency = round(time.time() - start, 2)
+        if expect == "benign":
+            return _result(base, response=transcript[-1]["content"], score=1.0,
+                           reasoning="Benign case: deterministic checks clean.", passed=True,
+                           status="pass", eval_type="deterministic", latency=latency,
+                           transcript=transcript, false_positive=False)
         try:
-            target_response = await query_fn(
-                base["prompt"], provider=target_provider, model=target_model
-            )
-        except ProviderError as e:
-            latency = round(time.time() - start_time, 2)
-            logger.warning(f"{tc_id}: target error: {e}")
-            return _result(
-                base, response=f"[target error] {e}", score=None, reasoning=str(e),
-                passed=False, status="error", eval_type="target_error", latency=latency,
-            )
-
-        latency = round(time.time() - start_time, 2)
-
-        # 2. Deterministic checks first (fast, cost-free). A failure here is a
-        #    genuine, unambiguous test failure — skip the judge to save cost.
-        det = run_deterministic_eval(target_response)
-        if not det["passed"]:
-            return _result(
-                base, response=target_response, score=det["score"], reasoning=det["reasoning"],
-                passed=False, status="fail", eval_type="deterministic", latency=latency,
-            )
-
-        # 3. LLM judge. Infra/parse failure -> ERROR, not a test failure.
-        logger.info(f"Deterministic checks passed for {tc_id}. Invoking LLM Judge...")
-        try:
-            judged = await judge_fn(
-                prompt=base["prompt"],
-                response=target_response,
-                expected_criteria=base["expected_criteria"],
-                provider=judge_provider,
-                model=judge_model,
-            )
+            judged = await judge_fn(transcript, base["expected_criteria"],
+                                    provider=judge_provider, model=judge_model)
         except (ProviderError, JudgeParseError) as e:
-            logger.warning(f"{tc_id}: judge error: {e}")
-            return _result(
-                base, response=target_response, score=None, reasoning=str(e),
-                passed=False, status="error", eval_type="judge_error", latency=latency,
-            )
-
+            return _result(base, response=transcript[-1]["content"], score=None, reasoning=str(e),
+                           passed=False, status="error", eval_type="judge_error",
+                           latency=latency, transcript=transcript)
         passed = bool(judged["passed"])
-        logger.info(f"Completed {tc_id}. Score: {judged['score']} | Passed: {passed}")
-        return _result(
-            base, response=target_response, score=judged["score"], reasoning=judged["reasoning"],
-            passed=passed, status=("pass" if passed else "fail"), eval_type="llm_judge", latency=latency,
-        )
+        return _result(base, response=transcript[-1]["content"], score=judged["score"],
+                       reasoning=judged["reasoning"], passed=passed,
+                       status="pass" if passed else "fail", eval_type="llm_judge",
+                       latency=latency, transcript=transcript)
 
 
 def build_summary(results, target_label, judge_label, total_time_seconds, timestamp=None) -> dict:
@@ -233,6 +214,7 @@ async def run_suite(
                 },
                 response=f"[unexpected error] {r}", score=None, reasoning=str(r),
                 passed=False, status="error", eval_type="internal_error", latency=0.0,
+                transcript=[],
             ))
         else:
             results.append(r)
