@@ -38,7 +38,7 @@ def configure_logging():
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
-def parse_args():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         description="AegisEval: Autonomous AI Security & Quality Evaluation Suite"
     )
@@ -56,7 +56,12 @@ def parse_args():
                         help="Model name for the Judge evaluator")
     parser.add_argument("--fail-under", type=float, default=None, metavar="PCT",
                         help="Exit non-zero if the pass rate is below this percentage (e.g. 80)")
-    return parser.parse_args()
+    parser.add_argument("--technique", default=None, help="Filter test cases by technique tag")
+    parser.add_argument("--repeats", type=int, default=config.REPEATS_PER_CASE,
+                        help="Run each case N times; take-worst aggregation")
+    parser.add_argument("--target-temp", type=float, default=config.TARGET_TEMPERATURE,
+                        help="Target sampling temperature (repeats vary only when > 0)")
+    return parser.parse_args(argv)
 
 
 def missing_keys(target_provider: str, judge_provider: str) -> list:
@@ -82,7 +87,11 @@ def decide_exit_code(summary: dict, fail_under) -> int:
     """
     if summary["total"] > 0 and summary["evaluated"] == 0:
         return 1  # cases existed but none could be evaluated
-    if fail_under is not None and summary["evaluated"] > 0 and summary["pass_rate"] < fail_under:
+    if summary.get("attack_total", 0) > 0 and summary.get("attack_evaluated", 1) == 0:
+        return 1  # attack suite fully errored (e.g. judge outage)
+    gate_rate = summary.get("attack_pass_rate", summary["pass_rate"])
+    gate_eval = summary.get("attack_evaluated", summary["evaluated"])
+    if fail_under is not None and gate_eval and gate_rate is not None and gate_rate < fail_under:
         return 1  # quality gate failed
     return 0
 
@@ -113,10 +122,13 @@ async def main_async() -> int:
     payload = await run_suite(
         tag_filter=args.tag,
         category_filter=args.category,
+        technique_filter=args.technique,
+        repeats=args.repeats,
         target_provider=args.target_provider,
         target_model=args.target_model,
         judge_provider=args.judge_provider,
         judge_model=args.judge_model,
+        target_temperature=args.target_temp,
     )
 
     if "error" in payload:
@@ -149,8 +161,11 @@ async def main_async() -> int:
     if exit_code != 0:
         if summary["total"] > 0 and summary["evaluated"] == 0:
             print(f"{RED}Run inconclusive: every case errored.{RESET}")
+        elif summary.get("attack_total", 0) > 0 and summary.get("attack_evaluated", 1) == 0:
+            print(f"{RED}Run inconclusive: every attack case errored (judge/target outage).{RESET}")
         else:
-            print(f"{RED}Quality gate failed: pass rate {summary['pass_rate']}% < {args.fail_under}%.{RESET}")
+            gate_rate = summary.get("attack_pass_rate", summary["pass_rate"])
+            print(f"{RED}Quality gate failed: attack pass rate {gate_rate}% < {args.fail_under}%.{RESET}")
     return exit_code
 
 

@@ -1,5 +1,5 @@
 """Tests for the CI exit-code decision."""
-from run import decide_exit_code
+from run import parse_args, decide_exit_code
 
 
 def _summary(total, evaluated, pass_rate):
@@ -26,3 +26,27 @@ def test_all_errored_is_inconclusive():
 def test_empty_selection_does_not_trip_gate():
     # No cases matched the filter; that is not a quality-gate failure.
     assert decide_exit_code(_summary(0, 0, 0.0), fail_under=90) == 0
+
+
+def test_parse_args_new_flags():
+    ns = parse_args(["--repeats", "3", "--technique", "crescendo", "--target-temp", "0.7"])
+    assert ns.repeats == 3 and ns.technique == "crescendo" and ns.target_temp == 0.7
+
+
+def test_gate_uses_attack_pass_rate():
+    s = {"total": 10, "evaluated": 10, "pass_rate": 90.0,
+         "attack_total": 8, "attack_evaluated": 8, "attack_pass_rate": 75.0}
+    assert decide_exit_code(s, 80) == 1        # attack 75 < 80 even though global 90
+    assert decide_exit_code(s, 70) == 0
+
+
+def test_benign_only_selection_not_false_failure():
+    s = {"total": 6, "evaluated": 6, "pass_rate": 100.0,
+         "attack_total": 0, "attack_evaluated": 0, "attack_pass_rate": None}
+    assert decide_exit_code(s, 80) == 0
+
+
+def test_judge_outage_exits_one():
+    s = {"total": 14, "evaluated": 6, "pass_rate": 100.0,
+         "attack_total": 6, "attack_evaluated": 0, "attack_pass_rate": None}
+    assert decide_exit_code(s, None) == 1
