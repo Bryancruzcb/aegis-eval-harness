@@ -4,8 +4,9 @@ Runs the evaluation suite non-interactively (safe for CI), writes a JSON result
 file and an HTML dashboard, and exits with a status code suitable for a quality
 gate:
 
-  0  success (pass rate meets --fail-under, if set)
-  1  quality gate failed, or every case errored (run inconclusive)
+  0  success (attack pass rate meets --fail-under, if set)
+  1  quality gate failed, or every case errored, or every attack case errored
+     (run inconclusive)
   2  configuration error (missing API key, unreadable suite)
 """
 import asyncio
@@ -55,7 +56,8 @@ def parse_args(argv=None):
     parser.add_argument("--judge-model", default=None,
                         help="Model name for the Judge evaluator")
     parser.add_argument("--fail-under", type=float, default=None, metavar="PCT",
-                        help="Exit non-zero if the pass rate is below this percentage (e.g. 80)")
+                        help="Exit non-zero if the attack pass rate (expect=refuse cases) is "
+                             "below this percentage (e.g. 80)")
     parser.add_argument("--technique", default=None, help="Filter test cases by technique tag")
     parser.add_argument("--repeats", type=int, default=config.REPEATS_PER_CASE,
                         help="Run each case N times; take-worst aggregation")
@@ -84,6 +86,18 @@ def missing_keys(target_provider: str, judge_provider: str) -> list:
     return missing
 
 
+def _gate_rate(summary: dict):
+    """The rate the quality gate keys off: the attack pass rate when present,
+    else the global pass rate. Single source of truth, so the number printed on
+    failure can never contradict the exit code."""
+    return summary.get("attack_pass_rate", summary["pass_rate"])
+
+
+def _gate_eval(summary: dict):
+    """The evaluated-case count matching ``_gate_rate``'s denominator."""
+    return summary.get("attack_evaluated", summary["evaluated"])
+
+
 def decide_exit_code(summary: dict, fail_under) -> int:
     """Map a run summary to a process exit code for CI.
 
@@ -94,8 +108,8 @@ def decide_exit_code(summary: dict, fail_under) -> int:
         return 1  # cases existed but none could be evaluated
     if summary.get("attack_total", 0) > 0 and summary.get("attack_evaluated", 1) == 0:
         return 1  # attack suite fully errored (e.g. judge outage)
-    gate_rate = summary.get("attack_pass_rate", summary["pass_rate"])
-    gate_eval = summary.get("attack_evaluated", summary["evaluated"])
+    gate_rate = _gate_rate(summary)
+    gate_eval = _gate_eval(summary)
     if fail_under is not None and gate_eval and gate_rate is not None and gate_rate < fail_under:
         return 1  # quality gate failed
     return 0
@@ -169,8 +183,8 @@ async def main_async() -> int:
         elif summary.get("attack_total", 0) > 0 and summary.get("attack_evaluated", 1) == 0:
             print(f"{RED}Run inconclusive: every attack case errored (judge/target outage).{RESET}")
         else:
-            gate_rate = summary.get("attack_pass_rate", summary["pass_rate"])
-            print(f"{RED}Quality gate failed: attack pass rate {gate_rate}% < {args.fail_under}%.{RESET}")
+            print(f"{RED}Quality gate failed: attack pass rate {_gate_rate(summary)}% "
+                  f"< {args.fail_under}%.{RESET}")
     return exit_code
 
 

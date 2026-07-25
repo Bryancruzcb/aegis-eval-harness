@@ -499,10 +499,18 @@ def print_terminal_summary(results_payload: dict):
         print(f"Attack Pass Rate: {summary['attack_pass_rate']}%")
     if summary.get("total_breaks"):
         print(f"Breaks:          {summary['total_breaks']}")
+    if summary.get("overall_break_rate") is not None:
+        print(f"Overall Break Rate: {round(summary['overall_break_rate'] * 100, 1)}%"
+              f"  (of all evaluated attack runs)")
     if summary.get("benign_false_positives"):
         print(f"Benign FP:       {summary['benign_false_positives']}")
+    if summary.get("grader_fp_rate") is not None:
+        print(f"Grader FP Rate:  {round(summary['grader_fp_rate'] * 100, 1)}%"
+              f"  (of evaluated benign cases)")
     print(f"Average Latency: {summary['average_latency_seconds']}s")
     print(f"Total Time:      {summary['total_time_seconds']}s")
+    print("Note: pass_rate is per-CASE take-worst over repeats; overall_break_rate is "
+          "per-RUN. They are NOT complementary.")
     print("=" * 80)
 
     print(f"{'ID':<8} | {'Category':<10} | {'Status':<7} | {'Score':<5} | {'Description'}")

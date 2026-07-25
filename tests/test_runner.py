@@ -1,5 +1,6 @@
 """Tests for per-case orchestration and suite-level filtering."""
 import asyncio
+import logging
 
 import pytest
 
@@ -192,6 +193,16 @@ async def test_run_suite_empty_filter_full_summary():
     payload = await run_suite(technique_filter="no-such-technique",
                               query_fn=None, judge_fn=None)
     assert payload["summary"]["total"] == 0 and "timestamp" in payload["summary"]
+
+
+async def test_technique_no_match_warns_and_lists_valid_techniques(caplog):
+    # spec 4.8: warn with the techniques present in the data, then proceed.
+    with caplog.at_level(logging.WARNING, logger="AegisEval.Runner"):
+        payload = await run_suite(technique_filter="no-such-technique",
+                                  query_fn=None, judge_fn=None)
+    assert payload["summary"]["total"] == 0
+    msg = " ".join(r.message for r in caplog.records)
+    assert "no-such-technique" in msg and "crescendo" in msg
 
 
 # --- resilience: an unexpected exception degrades to an error result ----------

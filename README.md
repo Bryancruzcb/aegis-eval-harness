@@ -103,8 +103,10 @@ python run.py --target-provider ollama --target-model llama3.2:3b \
 python run.py --fail-under 80
 ```
 
-Exit codes: `0` success, `1` quality gate failed (or every case errored),
-`2` configuration error (missing key / unreadable suite).
+Exit codes: `0` success, `1` quality gate failed **or** the run was
+inconclusive — every case errored, or every *attack* case errored (a judge or
+target outage, even if the benign cases passed) — `2` configuration error
+(missing key / unreadable suite).
 
 ### Flags
 

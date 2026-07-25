@@ -1,6 +1,6 @@
 """Tests for summary math and HTML report escaping."""
 from runner import build_summary
-from reporter import generate_html_report
+from reporter import generate_html_report, print_terminal_summary
 
 
 # --- Summary construction ---
@@ -150,6 +150,28 @@ def test_reasoning_label_drops_judge_when_no_judge_ran():
     html = _html("test_det_label.html", eval_type="deterministic")
     assert "Judge Evaluation Reasoning" not in html
     assert "Evaluation Reasoning" in html
+
+
+# --- terminal summary: break/FP rates + the non-complementary caption --------
+
+def test_terminal_summary_prints_break_and_fp_rates(capsys):
+    payload = _payload()
+    payload["summary"]["grader_fp_rate"] = 0.25
+    print_terminal_summary(payload)
+    out = capsys.readouterr().out
+    assert "Overall Break Rate" in out and "33.0%" in out
+    assert "Grader FP Rate" in out and "25.0%" in out
+    assert "NOT complementary" in out
+
+
+def test_terminal_summary_survives_absent_rate_keys(capsys):
+    payload = {"results": [], "summary": {
+        "timestamp": "t", "target": "x", "judge": "y", "total": 0, "passed": 0,
+        "failed": 0, "errors": 0, "pass_rate": 0.0, "total_time_seconds": 0.0,
+        "average_latency_seconds": 0.0}}
+    print_terminal_summary(payload)  # legacy summary: must not KeyError
+    out = capsys.readouterr().out
+    assert "Overall Break Rate" not in out and "Grader FP Rate" not in out
 
 
 def test_existing_escaping_payload_without_new_keys_still_renders():

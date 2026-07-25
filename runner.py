@@ -80,6 +80,12 @@ def _base_fields(test_case):
     }
 
 
+def _log_done(tc_id, status, score=None):
+    """One completion line per run, so a long suite shows progress."""
+    detail = f" (score {score})" if score is not None else ""
+    logger.info(f"Completed {tc_id}: {status}{detail}")
+
+
 def _internal_error_result(test_case, exc):
     """Turn an unexpected (non-ProviderError) exception into an error result so
     one bad case degrades instead of sinking the whole run."""
@@ -96,8 +102,10 @@ async def run_single_test(test_case, semaphore, *, query_fn=None, judge_fn=None,
     expect = test_case.get("expect", "refuse")
     turns = test_case.get("turns") or [test_case["prompt"]]
     base = _base_fields(test_case)
+    tc_id = base["id"]
     secret_norm = _alphanumeric(config.SYSTEM_SECRET)
     async with semaphore:
+        logger.info(f"Starting {tc_id} ({base['category']})")
         transcript, running_bot, attacker_text = [], "", ""
         start = time.time()
         for user_msg in turns:
@@ -109,6 +117,8 @@ async def run_single_test(test_case, semaphore, *, query_fn=None, judge_fn=None,
                                        model=target_model, temperature=target_temperature)
             except ProviderError as e:
                 latency = round(time.time() - start, 2)
+                logger.warning(f"{tc_id}: target error: {e}")
+                _log_done(tc_id, "error")
                 return _result(base, response=None, score=None, reasoning=str(e), passed=False,
                                status="error", eval_type="target_error", latency=latency,
                                transcript=transcript)
@@ -120,23 +130,29 @@ async def run_single_test(test_case, semaphore, *, query_fn=None, judge_fn=None,
                 latency = round(time.time() - start, 2)
                 # Benign fail label: secret-collision => grader FP (True); profanity => genuine (False).
                 fp = (not det["profanity"]) if expect == "benign" else None
+                _log_done(tc_id, "fail (deterministic)", 0.0)
                 return _result(base, response=reply, score=0.0, reasoning=det["reasoning"],
                                passed=False, status="fail", eval_type="deterministic",
                                latency=latency, transcript=transcript, false_positive=fp)
         latency = round(time.time() - start, 2)
         if expect == "benign":
+            _log_done(tc_id, "pass (benign, deterministic-only)", 1.0)
             return _result(base, response=transcript[-1]["content"], score=1.0,
                            reasoning="Benign case: deterministic checks clean.", passed=True,
                            status="pass", eval_type="deterministic", latency=latency,
                            transcript=transcript, false_positive=False)
+        logger.info(f"Deterministic checks passed for {tc_id}. Invoking LLM Judge...")
         try:
             judged = await judge_fn(transcript, base["expected_criteria"],
                                     provider=judge_provider, model=judge_model)
         except (ProviderError, JudgeParseError) as e:
+            logger.warning(f"{tc_id}: judge error: {e}")
+            _log_done(tc_id, "error")
             return _result(base, response=transcript[-1]["content"], score=None, reasoning=str(e),
                            passed=False, status="error", eval_type="judge_error",
                            latency=latency, transcript=transcript)
         passed = bool(judged["passed"])
+        _log_done(tc_id, "pass" if passed else "fail", judged["score"])
         return _result(base, response=transcript[-1]["content"], score=judged["score"],
                        reasoning=judged["reasoning"], passed=passed,
                        status="pass" if passed else "fail", eval_type="llm_judge",
@@ -279,10 +295,21 @@ async def run_suite(tag_filter=None, category_filter=None, technique_filter=None
     if tag_filter:
         cases = [c for c in cases if tag_filter in c.get("tags", [])]
     if technique_filter:
+        available = sorted({c["technique"] for c in cases})
         cases = [c for c in cases if c["technique"] == technique_filter]
+        if not cases:
+            # spec 4.8: warn with the valid techniques, then proceed empty.
+            logger.warning(
+                f"--technique '{technique_filter}' matched no test cases. "
+                f"Valid techniques in the selected data: {', '.join(available)}. "
+                "Proceeding with an empty selection."
+            )
+    logger.info(f"Selected {len(cases)} test case(s).")
     target_label = f"{target_provider or config.DEFAULT_TARGET_PROVIDER}:{target_model or config.DEFAULT_TARGET_MODEL}"
     judge_label = f"{judge_provider or config.DEFAULT_JUDGE_PROVIDER}:{judge_model or config.DEFAULT_JUDGE_MODEL}"
     if not cases:
+        if not technique_filter:
+            logger.warning("No test cases match the selection criteria.")
         return {"results": [], "summary": build_summary([], target_label, judge_label, 0.0)}
     semaphore = asyncio.Semaphore(config.MAX_CONCURRENT_REQUESTS)
     start = time.time()
@@ -302,4 +329,10 @@ async def run_suite(tag_filter=None, category_filter=None, technique_filter=None
             results.append(_internal_error_result(c, r))
         else:
             results.append(r)
-    return {"results": results, "summary": build_summary(results, target_label, judge_label, total_time)}
+    summary = build_summary(results, target_label, judge_label, total_time)
+    logger.info(
+        f"Suite completed. Pass rate: {summary['pass_rate']}% "
+        f"({summary['passed']}/{summary['evaluated']} evaluated, {summary['errors']} error(s)) "
+        f"| Time: {summary['total_time_seconds']}s"
+    )
+    return {"results": results, "summary": summary}

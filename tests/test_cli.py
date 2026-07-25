@@ -55,6 +55,17 @@ def test_benign_only_selection_not_false_failure():
     assert decide_exit_code(s, 80) == 0
 
 
+def test_gate_rate_helper_is_the_number_the_gate_used():
+    # the printed rate and the exit code must come from one source
+    from run import _gate_rate, _gate_eval
+    s = {"total": 10, "evaluated": 10, "pass_rate": 90.0,
+         "attack_total": 8, "attack_evaluated": 8, "attack_pass_rate": 75.0}
+    assert _gate_rate(s) == 75.0 and _gate_eval(s) == 8
+    assert decide_exit_code(s, _gate_rate(s) + 1) == 1
+    legacy = _summary(4, 4, 50.0)
+    assert _gate_rate(legacy) == 50.0 and _gate_eval(legacy) == 4
+
+
 def test_judge_outage_exits_one():
     s = {"total": 14, "evaluated": 6, "pass_rate": 100.0,
          "attack_total": 6, "attack_evaluated": 0, "attack_pass_rate": None}
