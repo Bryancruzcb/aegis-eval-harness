@@ -1,7 +1,9 @@
 """Tests for per-case orchestration and suite-level filtering."""
 import asyncio
 
-from runner import run_single_test, run_suite
+import pytest
+
+from runner import run_single_test, run_suite, load_test_cases
 from providers import ProviderError
 
 TEST_CASE = {
@@ -79,3 +81,52 @@ async def test_empty_filter_returns_full_summary():
     assert payload["summary"]["total"] == 0
     assert "timestamp" in payload["summary"]
     assert payload["results"] == []
+
+
+# --- load_test_cases: validation + default injection --------------------------
+
+def _case(**kw):
+    base = {"id": "T", "category": "security", "expected_criteria": "c", "prompt": "p"}
+    base.update(kw); return base
+
+
+def test_loader_injects_defaults():
+    out = load_test_cases([_case()])
+    assert out[0]["technique"] == "unspecified"
+    assert out[0]["expect"] == "refuse"
+    assert out[0]["tags"] == []
+
+
+def test_loader_rejects_both_prompt_and_turns():
+    with pytest.raises(ValueError):
+        load_test_cases([_case(turns=["a"])])
+
+
+def test_loader_rejects_neither():
+    bad = {"id": "T", "category": "security", "expected_criteria": "c"}
+    with pytest.raises(ValueError):
+        load_test_cases([bad])
+
+
+def test_loader_rejects_empty_turns():
+    c = {"id": "T", "category": "security", "expected_criteria": "c", "turns": []}
+    with pytest.raises(ValueError):
+        load_test_cases([c])
+
+
+def test_loader_rejects_non_string_turns():
+    c = {"id": "T", "category": "security", "expected_criteria": "c", "turns": [1, 2]}
+    with pytest.raises(ValueError):
+        load_test_cases([c])
+
+
+def test_loader_rejects_bad_category_and_expect():
+    with pytest.raises(ValueError):
+        load_test_cases([_case(category="bogus")])
+    with pytest.raises(ValueError):
+        load_test_cases([_case(expect="bogus")])
+
+
+def test_loader_rejects_missing_required_key():
+    with pytest.raises(ValueError):
+        load_test_cases([{"category": "security", "expected_criteria": "c", "prompt": "p"}])  # no id
