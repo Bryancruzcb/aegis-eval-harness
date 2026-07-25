@@ -125,6 +125,38 @@ async def run_single_test(test_case, semaphore, *, query_fn=None, judge_fn=None,
                        latency=latency, transcript=transcript)
 
 
+def aggregate_repeats(runs):
+    """Collapse N per-run results (from ``run_single_test``) for one case into a
+    single case result using take-worst ordering ``fail > pass > error``.
+
+    Status is ``fail`` if any run failed; else ``pass`` if any run passed; else
+    ``error`` (only when *every* run errored). Among the worst-status runs a
+    ``deterministic`` fail is preferred over a judge fail, otherwise the earliest
+    run wins. The chosen run's fields carry through, so transcript/expect/
+    false_positive survive. Adds repeat/error/break counts and a ``break_rate``
+    over *evaluated* runs (errors excluded; ``None`` when nothing was evaluated).
+    """
+    order = {"fail": 0, "pass": 1, "error": 2}
+    if any(r["status"] == "fail" for r in runs):
+        worst_status = "fail"
+    elif any(r["status"] == "pass" for r in runs):
+        worst_status = "pass"
+    else:
+        worst_status = "error"
+    at_worst = [r for r in runs if r["status"] == worst_status]
+    if worst_status == "fail":
+        at_worst.sort(key=lambda r: 0 if r["eval_type"] == "deterministic" else 1)
+    chosen = at_worst[0]
+    repeat_count = len(runs)
+    error_count = sum(1 for r in runs if r["status"] == "error")
+    break_count = sum(1 for r in runs if r["status"] == "fail")
+    evaluated_runs = repeat_count - error_count
+    break_rate = round(break_count / evaluated_runs, 4) if evaluated_runs else None
+    return {**chosen, "status": worst_status, "repeat_count": repeat_count,
+            "error_count": error_count, "break_count": break_count,
+            "evaluated_runs": evaluated_runs, "break_rate": break_rate}
+
+
 def build_summary(results, target_label, judge_label, total_time_seconds, timestamp=None) -> dict:
     """Aggregate results into a summary. Always returns every key, even for an
     empty result set, so the reporter never hits a missing field.
