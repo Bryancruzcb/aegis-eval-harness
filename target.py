@@ -40,33 +40,51 @@ async def _gemini_generate(client, model, contents, gen_config):
 
 
 @retryable
-async def _openai_chat(client, model, messages):
+async def _openai_chat(client, model, messages, temperature=0.0):
     return await client.chat.completions.create(
-        model=model, messages=messages, temperature=0.0
+        model=model, messages=messages, temperature=temperature
     )
 
 
-async def query_target(prompt: str, provider: str = None, model: str = None) -> str:
-    """Query the target LLM with the guardian system prompt and a user prompt.
+def build_openai_messages(system, messages):
+    """Prepend the system instruction to a conversation for OpenAI-style APIs."""
+    return [{"role": "system", "content": system}, *messages]
 
-    Returns the model's text. Raises ``ProviderError`` if the call cannot be
-    completed.
+
+def build_gemini_contents(messages):
+    """Map a conversation to google-genai ``Content`` objects (assistant->model)."""
+    role_map = {"user": "user", "assistant": "model"}
+    return [
+        types.Content(role=role_map[m["role"]], parts=[types.Part(text=m["content"])])
+        for m in messages
+    ]
+
+
+async def query_target_conversation(messages, provider=None, model=None, temperature=None) -> str:
+    """Query the target LLM with the guardian system prompt and a conversation.
+
+    ``messages`` is a list of ``{"role": "user"|"assistant", "content": str}``
+    turns. Returns the model's text. Raises ``ProviderError`` if the call cannot
+    be completed.
     """
     provider = (provider or config.DEFAULT_TARGET_PROVIDER).lower()
     model = model or config.DEFAULT_TARGET_MODEL
+    if temperature is None:
+        temperature = config.TARGET_TEMPERATURE
 
-    logger.info(f"Querying target ({provider}:{model})...")
+    logger.info(f"Querying target ({provider}:{model}) with {len(messages)} message(s)...")
 
     try:
         if provider == "gemini":
             client = get_gemini_client()
+            contents = build_gemini_contents(messages)
             response = await _gemini_generate(
                 client,
                 model,
-                prompt,
+                contents,
                 types.GenerateContentConfig(
                     system_instruction=SYSTEM_INSTRUCTION,
-                    temperature=0.0,  # deterministic target responses for repeatable tests
+                    temperature=temperature,
                 ),
             )
             text = response.text
@@ -76,11 +94,8 @@ async def query_target(prompt: str, provider: str = None, model: str = None) -> 
 
         elif provider in ("openai", "ollama"):
             client = get_openai_client() if provider == "openai" else get_ollama_client()
-            messages = [
-                {"role": "system", "content": SYSTEM_INSTRUCTION},
-                {"role": "user", "content": prompt},
-            ]
-            response = await _openai_chat(client, model, messages)
+            oai_messages = build_openai_messages(SYSTEM_INSTRUCTION, messages)
+            response = await _openai_chat(client, model, oai_messages, temperature)
             content = response.choices[0].message.content
             if content is None:
                 raise ProviderError("Target returned no content.")
@@ -94,6 +109,14 @@ async def query_target(prompt: str, provider: str = None, model: str = None) -> 
     except Exception as e:
         logger.error(f"Error querying target {provider}:{model}: {e}")
         raise ProviderError(f"Target query failed: {e}") from e
+
+
+async def query_target(prompt: str, provider: str = None, model: str = None,
+                       temperature: float = None) -> str:
+    """Single-prompt convenience wrapper over ``query_target_conversation``."""
+    return await query_target_conversation(
+        [{"role": "user", "content": prompt}], provider, model, temperature
+    )
 
 
 # Simple manual smoke test
