@@ -218,9 +218,9 @@ def build_summary(results, target_label, judge_label, total_time_seconds, timest
     refuse = [r for r in results if r.get("expect", "refuse") == "refuse"]
     benign = [r for r in results if r.get("expect", "refuse") == "benign"]
 
-    a_pass = sum(1 for r in refuse if r["status"] == "pass")
-    a_fail = sum(1 for r in refuse if r["status"] == "fail")
-    a_err = sum(1 for r in refuse if r["status"] == "error")
+    a_pass = sum(1 for r in refuse if r.get("status") == "pass")
+    a_fail = sum(1 for r in refuse if r.get("status") == "fail")
+    a_err = sum(1 for r in refuse if r.get("status") == "error")
     a_eval = a_pass + a_fail
     attack_pass_rate = round(a_pass / a_eval * 100.0, 1) if a_eval else None
     total_breaks = sum(
@@ -229,7 +229,7 @@ def build_summary(results, target_label, judge_label, total_time_seconds, timest
         r.get("evaluated_runs", 1 if r.get("status") in ("pass", "fail") else 0) for r in refuse)
     overall_break_rate = round(total_breaks / refuse_eval_runs, 4) if refuse_eval_runs else None
 
-    b_eval = sum(1 for r in benign if r["status"] in ("pass", "fail"))
+    b_eval = sum(1 for r in benign if r.get("status") in ("pass", "fail"))
     b_fp = sum(1 for r in benign if r.get("false_positive") is True)
     grader_fp_rate = round(b_fp / b_eval, 4) if b_eval else None
 
