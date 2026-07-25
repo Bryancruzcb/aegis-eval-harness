@@ -189,73 +189,51 @@ def build_summary(results, target_label, judge_label, total_time_seconds, timest
     }
 
 
-async def run_suite(
-    tag_filter: str = None,
-    category_filter: str = None,
-    target_provider: str = None,
-    target_model: str = None,
-    judge_provider: str = None,
-    judge_model: str = None,
-) -> dict:
+async def run_case_repeated(test_case, semaphore, *, repeats, query_fn, judge_fn,
+                            target_provider=None, target_model=None, judge_provider=None,
+                            judge_model=None, target_temperature=None):
+    """Run one case ``repeats`` times and collapse with take-worst aggregation.
+
+    A ``None`` ``query_fn``/``judge_fn`` is forwarded straight into
+    ``run_single_test``, whose own defaults then bind the real target/judge.
+    """
+    tasks = [run_single_test(test_case, semaphore, query_fn=query_fn, judge_fn=judge_fn,
+                             target_provider=target_provider, target_model=target_model,
+                             judge_provider=judge_provider, judge_model=judge_model,
+                             target_temperature=target_temperature)
+             for _ in range(repeats)]
+    runs = await asyncio.gather(*tasks)
+    return aggregate_repeats(runs)
+
+
+async def run_suite(tag_filter=None, category_filter=None, technique_filter=None, repeats=1,
+                    target_provider=None, target_model=None, judge_provider=None,
+                    judge_model=None, target_temperature=None, query_fn=None, judge_fn=None):
     """Load, filter, and run all test cases; return results plus a summary."""
     try:
         with open(config.BASE_DIR / "test_cases.json", "r", encoding="utf-8") as f:
-            test_cases = json.load(f)
+            raw = json.load(f)
+        cases = load_test_cases(raw)
     except Exception as e:
         logger.error(f"Failed to load test_cases.json: {e}")
         return {"error": str(e)}
-
     if category_filter:
-        test_cases = [tc for tc in test_cases if tc.get("category") == category_filter]
+        cases = [c for c in cases if c["category"] == category_filter]
     if tag_filter:
-        test_cases = [tc for tc in test_cases if tag_filter in tc.get("tags", [])]
-    logger.info(f"Selected {len(test_cases)} test case(s).")
-
+        cases = [c for c in cases if tag_filter in c.get("tags", [])]
+    if technique_filter:
+        cases = [c for c in cases if c["technique"] == technique_filter]
     target_label = f"{target_provider or config.DEFAULT_TARGET_PROVIDER}:{target_model or config.DEFAULT_TARGET_MODEL}"
     judge_label = f"{judge_provider or config.DEFAULT_JUDGE_PROVIDER}:{judge_model or config.DEFAULT_JUDGE_MODEL}"
-
-    if not test_cases:
-        logger.warning("No test cases match the selection criteria.")
+    if not cases:
         return {"results": [], "summary": build_summary([], target_label, judge_label, 0.0)}
-
     semaphore = asyncio.Semaphore(config.MAX_CONCURRENT_REQUESTS)
-    tasks = [
-        run_single_test(
-            tc, semaphore,
-            target_provider=target_provider, target_model=target_model,
-            judge_provider=judge_provider, judge_model=judge_model,
-        )
-        for tc in test_cases
-    ]
-
-    start_suite_time = time.time()
-    raw_results = await asyncio.gather(*tasks, return_exceptions=True)
-    total_suite_time = time.time() - start_suite_time
-
-    # Convert any unexpected exception into an ERROR result so one bad case
-    # can't sink the entire suite.
-    results = []
-    for tc, r in zip(test_cases, raw_results):
-        if isinstance(r, Exception):
-            logger.error(f"{tc.get('id')}: unexpected error: {r}")
-            results.append(_result(
-                {
-                    "id": tc.get("id"), "category": tc.get("category"), "prompt": tc.get("prompt"),
-                    "expected_criteria": tc.get("expected_criteria"),
-                    "description": tc.get("description", ""), "tags": tc.get("tags", []),
-                },
-                response=f"[unexpected error] {r}", score=None, reasoning=str(r),
-                passed=False, status="error", eval_type="internal_error", latency=0.0,
-                transcript=[],
-            ))
-        else:
-            results.append(r)
-
-    summary = build_summary(results, target_label, judge_label, total_suite_time)
-    logger.info(
-        f"Suite completed. Pass rate: {summary['pass_rate']}% "
-        f"({summary['passed']}/{summary['evaluated']} evaluated, {summary['errors']} error(s)) "
-        f"| Time: {summary['total_time_seconds']}s"
-    )
-
-    return {"results": results, "summary": summary}
+    start = time.time()
+    results = await asyncio.gather(*[
+        run_case_repeated(c, semaphore, repeats=repeats, query_fn=query_fn, judge_fn=judge_fn,
+                          target_provider=target_provider, target_model=target_model,
+                          judge_provider=judge_provider, judge_model=judge_model,
+                          target_temperature=target_temperature)
+        for c in cases])
+    total_time = time.time() - start
+    return {"results": results, "summary": build_summary(results, target_label, judge_label, total_time)}

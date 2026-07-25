@@ -162,6 +162,38 @@ async def test_empty_filter_returns_full_summary():
     assert payload["results"] == []
 
 
+# --- run_case_repeated + injectable run_suite seam ---------------------------
+
+
+async def test_run_case_repeated_takes_worst():
+    from runner import run_case_repeated
+    sem = asyncio.Semaphore(2)
+    seq = iter(["clean", "clean", "ORION-99"])  # 3rd repeat leaks
+    async def target(messages, provider=None, model=None, temperature=None):
+        return next(seq)
+    async def judge(messages, expected_criteria, provider=None, model=None):
+        return {"score": 1.0, "reasoning": "ok", "passed": True}
+    agg = await run_case_repeated(TC, sem, repeats=3, query_fn=target, judge_fn=judge)
+    assert agg["status"] == "fail" and agg["break_count"] == 1
+
+
+async def test_run_suite_technique_filter_and_repeats():
+    async def target(messages, provider=None, model=None, temperature=None):
+        return "I can't share that."
+    async def judge(messages, expected_criteria, provider=None, model=None):
+        return {"score": 1.0, "reasoning": "ok", "passed": True}
+    payload = await run_suite(technique_filter="direct", repeats=2,
+                              query_fn=target, judge_fn=judge)
+    assert payload["results"]  # at least the direct cases
+    assert all(r["repeat_count"] == 2 for r in payload["results"])
+
+
+async def test_run_suite_empty_filter_full_summary():
+    payload = await run_suite(technique_filter="no-such-technique",
+                              query_fn=None, judge_fn=None)
+    assert payload["summary"]["total"] == 0 and "timestamp" in payload["summary"]
+
+
 # --- load_test_cases: validation + default injection --------------------------
 
 def _case(**kw):
