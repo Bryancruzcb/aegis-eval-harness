@@ -62,8 +62,12 @@ def _payload(**over):
            "expected_criteria": "c", "description": "d", "tags": ["x"], "score": 1.0,
            "reasoning": "r", "passed": True, "status": "pass", "eval_type": "llm_judge",
            "latency_seconds": 0.1,
+           # 4 messages = a genuinely multi-turn (2-exchange) transcript; a
+           # 2-message transcript is one exchange and falls back to the boxes.
            "transcript": [{"role": "user", "content": "ask"},
-                          {"role": "assistant", "content": "<script>x</script>"}],
+                          {"role": "assistant", "content": "<script>x</script>"},
+                          {"role": "user", "content": "push harder"},
+                          {"role": "assistant", "content": "still no"}],
            "repeat_count": 3, "break_count": 1, "expect": "refuse"}
     res.update(over)
     summary = {"timestamp": "t", "target": "x", "judge": "y", "total": 1, "passed": 1,
@@ -85,6 +89,67 @@ def test_none_rate_renders_dash():
     path = generate_html_report(_payload(), file_name="test_none_rate.html")
     html = open(path, encoding="utf-8").read()
     assert "—" in html  # grader_fp_rate is None
+
+
+def _html(name, **over):
+    return open(generate_html_report(_payload(**over), file_name=name), encoding="utf-8").read()
+
+
+# --- spec 4.7: two-box fallback is for a ONE-EXCHANGE (2-message) transcript --
+
+def test_one_exchange_transcript_uses_prompt_and_response_boxes():
+    html = _html("test_one_exchange.html",
+                 transcript=[{"role": "user", "content": "ask"},
+                             {"role": "assistant", "content": "reply"}])
+    assert "User Prompt / Attack" in html and "Target Response" in html
+    assert "Conversation" not in html
+
+
+def test_multi_turn_transcript_uses_conversation_box():
+    html = _html("test_multi_exchange.html")  # 4-message default fixture
+    assert "Conversation" in html
+    assert "User Prompt / Attack" not in html
+
+
+# --- grader false-positive surfacing (spec 4.3) ------------------------------
+
+def test_false_positive_badge_renders():
+    html = _html("test_fp_badge.html", expect="benign", status="fail", score=0.0,
+                 eval_type="deterministic", false_positive=True, repeat_count=1,
+                 break_count=1)
+    assert "grader FP" in html
+
+
+def test_false_positive_badge_absent_when_not_flagged():
+    assert "grader FP" not in _html("test_no_fp_badge.html")
+    assert "grader FP" not in _html("test_fp_false_badge.html", false_positive=False)
+
+
+def test_benign_break_badge_says_grader_flagged():
+    html = _html("test_benign_badge.html", expect="benign", repeat_count=3, break_count=2)
+    assert "grader-flagged 2/3" in html and "broke 2/3" not in html
+
+
+# --- target errors must not render the literal string "None" -----------------
+
+def test_none_response_renders_em_dash_not_none():
+    html = _html("test_none_response.html", response=None, status="error", score=None,
+                 eval_type="target_error",
+                 transcript=[{"role": "user", "content": "ask"}])
+    assert '<div class="detail-content">None</div>' not in html
+    assert '<div class="detail-content">&mdash;</div>' in html
+
+
+# --- reasoning label is only "Judge ..." when a judge actually ran -----------
+
+def test_reasoning_label_says_judge_for_llm_judge():
+    assert "Judge Evaluation Reasoning" in _html("test_judge_label.html")
+
+
+def test_reasoning_label_drops_judge_when_no_judge_ran():
+    html = _html("test_det_label.html", eval_type="deterministic")
+    assert "Judge Evaluation Reasoning" not in html
+    assert "Evaluation Reasoning" in html
 
 
 def test_existing_escaping_payload_without_new_keys_still_renders():

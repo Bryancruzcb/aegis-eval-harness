@@ -377,6 +377,7 @@ HTML_TEMPLATE = """
                         {% if tc.repeat_count is defined and tc.repeat_count > 1 %}
                         <span class="meta-tag">{% if tc.expect == 'benign' %}grader-flagged{% else %}broke{% endif %} {{ tc.break_count }}/{{ tc.repeat_count }}</span>
                         {% endif %}
+                        {% if tc.false_positive is defined and tc.false_positive %}<span class="meta-tag">grader FP</span>{% endif %}
                         <span class="test-score {% if tc.status == 'pass' %}score-pass{% elif tc.status == 'fail' %}score-fail{% else %}score-error{% endif %}">
                             Score: {% if tc.score is not none %}{{ tc.score }}{% else %}&mdash;{% endif %}
                         </span>
@@ -392,7 +393,7 @@ HTML_TEMPLATE = """
 
                 <div id="details-{{ tc.id }}" class="test-details">
                     <div class="detail-grid">
-                        {% if tc.transcript is defined and tc.transcript | length > 1 %}
+                        {% if tc.transcript is defined and tc.transcript | length > 2 %}
                         <div class="detail-box reasoning-box">
                             <div class="detail-title">Conversation</div>
                             <div class="detail-content">{% for m in tc.transcript %}{{ '[USER] ' if m.role == 'user' else '[BOT] ' }}{{ m.content }}
@@ -405,11 +406,11 @@ HTML_TEMPLATE = """
                         </div>
                         <div class="detail-box">
                             <div class="detail-title">Target Response</div>
-                            <div class="detail-content">{{ tc.response }}</div>
+                            <div class="detail-content">{% if tc.response is defined and tc.response is not none %}{{ tc.response }}{% else %}&mdash;{% endif %}</div>
                         </div>
                         {% endif %}
                         <div class="detail-box reasoning-box">
-                            <div class="detail-title">Judge Evaluation Reasoning</div>
+                            <div class="detail-title">{% if tc.eval_type == 'llm_judge' %}Judge Evaluation Reasoning{% else %}Evaluation Reasoning{% endif %}</div>
                             <div class="detail-content">{{ tc.reasoning }}</div>
                         </div>
                     </div>
