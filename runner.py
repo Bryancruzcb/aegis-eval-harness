@@ -15,7 +15,12 @@ import time
 import logging
 
 from target import query_target_conversation
-from evaluators import run_deterministic_eval, run_llm_judge_eval_conversation, JudgeParseError
+from evaluators import (
+    run_deterministic_eval,
+    run_llm_judge_eval_conversation,
+    JudgeParseError,
+    _alphanumeric,
+)
 from providers import ProviderError
 import config
 
@@ -59,9 +64,28 @@ def _result(base, *, response, score, reasoning, passed, status, eval_type, late
     return r
 
 
-def _norm(s):
-    import re as _re
-    return _re.sub(r"[^a-z0-9]", "", s.lower())
+def _base_fields(test_case):
+    """The identity fields every result for a case carries, however it ends.
+
+    Used by both the normal path and the unexpected-exception fallback so an
+    internally-errored result has the same shape as its siblings.
+    """
+    turns = test_case.get("turns") or [test_case.get("prompt", "")]
+    return {
+        "id": test_case.get("id"), "category": test_case.get("category"),
+        "prompt": test_case.get("prompt") or "\n".join(turns),
+        "expected_criteria": test_case.get("expected_criteria"),
+        "description": test_case.get("description", ""), "tags": test_case.get("tags", []),
+        "expect": test_case.get("expect", "refuse"),
+    }
+
+
+def _internal_error_result(test_case, exc):
+    """Turn an unexpected (non-ProviderError) exception into an error result so
+    one bad case degrades instead of sinking the whole run."""
+    return _result(_base_fields(test_case), response=None, score=None, reasoning=str(exc),
+                   passed=False, status="error", eval_type="internal_error", latency=0.0,
+                   transcript=[])
 
 
 async def run_single_test(test_case, semaphore, *, query_fn=None, judge_fn=None,
@@ -71,21 +95,15 @@ async def run_single_test(test_case, semaphore, *, query_fn=None, judge_fn=None,
     judge_fn = judge_fn or run_llm_judge_eval_conversation
     expect = test_case.get("expect", "refuse")
     turns = test_case.get("turns") or [test_case["prompt"]]
-    base = {
-        "id": test_case["id"], "category": test_case["category"],
-        "prompt": test_case.get("prompt") or "\n".join(turns),
-        "expected_criteria": test_case["expected_criteria"],
-        "description": test_case.get("description", ""), "tags": test_case.get("tags", []),
-        "expect": expect,
-    }
-    secret_norm = _norm(config.SYSTEM_SECRET)
+    base = _base_fields(test_case)
+    secret_norm = _alphanumeric(config.SYSTEM_SECRET)
     async with semaphore:
         transcript, running_bot, attacker_text = [], "", ""
         start = time.time()
         for user_msg in turns:
             transcript.append({"role": "user", "content": user_msg})
             attacker_text += "\n" + user_msg
-            secret_supplied = secret_norm in _norm(attacker_text)
+            secret_supplied = secret_norm in _alphanumeric(attacker_text)
             try:
                 reply = await query_fn(transcript, provider=target_provider,
                                        model=target_model, temperature=target_temperature)
@@ -129,6 +147,9 @@ def aggregate_repeats(runs):
     """Collapse N per-run results (from ``run_single_test``) for one case into a
     single case result using take-worst ordering ``fail > pass > error``.
 
+    Requires a non-empty ``runs`` list (i.e. ``repeats >= 1``); raises
+    ``ValueError`` otherwise rather than indexing an empty selection.
+
     Status is ``fail`` if any run failed; else ``pass`` if any run passed; else
     ``error`` (only when *every* run errored). Among the worst-status runs a
     ``deterministic`` fail is preferred over a judge fail, otherwise the earliest
@@ -136,7 +157,11 @@ def aggregate_repeats(runs):
     false_positive survive. Adds repeat/error/break counts and a ``break_rate``
     over *evaluated* runs (errors excluded; ``None`` when nothing was evaluated).
     """
-    order = {"fail": 0, "pass": 1, "error": 2}
+    if not runs:
+        raise ValueError(
+            "aggregate_repeats requires at least one run "
+            "(precondition: repeats >= 1); got an empty run list."
+        )
     if any(r["status"] == "fail" for r in runs):
         worst_status = "fail"
     elif any(r["status"] == "pass" for r in runs):
@@ -225,7 +250,16 @@ async def run_case_repeated(test_case, semaphore, *, repeats, query_fn, judge_fn
                              judge_provider=judge_provider, judge_model=judge_model,
                              target_temperature=target_temperature)
              for _ in range(repeats)]
-    runs = await asyncio.gather(*tasks)
+    raw = await asyncio.gather(*tasks, return_exceptions=True)
+    # An unexpected exception degrades that repeat to an error run rather than
+    # killing the case (and, via the suite gather, the whole run).
+    runs = []
+    for r in raw:
+        if isinstance(r, Exception):
+            logger.error(f"{test_case.get('id')}: unexpected error in repeat: {r}")
+            runs.append(_internal_error_result(test_case, r))
+        else:
+            runs.append(r)
     return aggregate_repeats(runs)
 
 
@@ -252,11 +286,20 @@ async def run_suite(tag_filter=None, category_filter=None, technique_filter=None
         return {"results": [], "summary": build_summary([], target_label, judge_label, 0.0)}
     semaphore = asyncio.Semaphore(config.MAX_CONCURRENT_REQUESTS)
     start = time.time()
-    results = await asyncio.gather(*[
+    raw_results = await asyncio.gather(*[
         run_case_repeated(c, semaphore, repeats=repeats, query_fn=query_fn, judge_fn=judge_fn,
                           target_provider=target_provider, target_model=target_model,
                           judge_provider=judge_provider, judge_model=judge_model,
                           target_temperature=target_temperature)
-        for c in cases])
+        for c in cases], return_exceptions=True)
     total_time = time.time() - start
+    # Convert any unexpected exception into an ERROR result so one bad case
+    # can't sink the entire suite (and lose a whole paid run's results).
+    results = []
+    for c, r in zip(cases, raw_results):
+        if isinstance(r, Exception):
+            logger.error(f"{c.get('id')}: unexpected error: {r}")
+            results.append(_internal_error_result(c, r))
+        else:
+            results.append(r)
     return {"results": results, "summary": build_summary(results, target_label, judge_label, total_time)}

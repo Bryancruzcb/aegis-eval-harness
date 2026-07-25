@@ -61,7 +61,12 @@ def parse_args(argv=None):
                         help="Run each case N times; take-worst aggregation")
     parser.add_argument("--target-temp", type=float, default=config.TARGET_TEMPERATURE,
                         help="Target sampling temperature (repeats vary only when > 0)")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    # Also validates config.REPEATS_PER_CASE, which supplies the default: a
+    # repeats of 0 would aggregate an empty run list.
+    if args.repeats < 1:
+        parser.error("--repeats must be >= 1")
+    return args
 
 
 def missing_keys(target_provider: str, judge_provider: str) -> list:

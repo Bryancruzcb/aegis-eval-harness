@@ -194,6 +194,37 @@ async def test_run_suite_empty_filter_full_summary():
     assert payload["summary"]["total"] == 0 and "timestamp" in payload["summary"]
 
 
+# --- resilience: an unexpected exception degrades to an error result ----------
+
+
+async def test_unexpected_exception_in_repeat_becomes_error_result():
+    # A non-ProviderError escaping the target must not sink the run: the case
+    # degrades to status=error so run.py still writes results/report.
+    async def boom(messages, provider=None, model=None, temperature=None):
+        raise ValueError("kaboom")
+    async def judge(messages, expected_criteria, provider=None, model=None):
+        raise AssertionError("judge must not run")
+    payload = await run_suite(technique_filter="direct", query_fn=boom, judge_fn=judge)
+    assert payload["results"]
+    assert all(r["status"] == "error" for r in payload["results"])
+    assert all(r["id"] and r["category"] for r in payload["results"])
+
+
+async def test_run_suite_survives_exception_from_case_task(monkeypatch):
+    import runner as runner_mod
+    async def explode(*a, **kw):
+        raise RuntimeError("aggregation blew up")
+    monkeypatch.setattr(runner_mod, "run_case_repeated", explode)
+    payload = await run_suite(technique_filter="direct", query_fn=None, judge_fn=None)
+    assert payload["results"]
+    for r in payload["results"]:
+        assert r["status"] == "error"
+        # shape matches its siblings
+        for key in ("id", "category", "prompt", "expected_criteria", "description",
+                    "tags", "expect", "transcript"):
+            assert key in r
+
+
 # --- load_test_cases: validation + default injection --------------------------
 
 def _case(**kw):
@@ -272,6 +303,12 @@ def test_break_rate_excludes_errors():
     agg = aggregate_repeats([_run("fail"), _run("pass"), _run("error")])
     # evaluated_runs = 2 (fail+pass); break_count = 1 -> 0.5
     assert agg["evaluated_runs"] == 2 and agg["break_rate"] == 0.5
+
+
+def test_aggregate_repeats_rejects_empty_runs():
+    # repeats < 1 would otherwise IndexError on at_worst[0]
+    with pytest.raises(ValueError):
+        aggregate_repeats([])
 
 
 def test_tiebreak_prefers_deterministic_fail():

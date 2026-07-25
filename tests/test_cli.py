@@ -1,4 +1,6 @@
 """Tests for the CI exit-code decision."""
+import pytest
+
 from run import parse_args, decide_exit_code
 
 
@@ -31,6 +33,13 @@ def test_empty_selection_does_not_trip_gate():
 def test_parse_args_new_flags():
     ns = parse_args(["--repeats", "3", "--technique", "crescendo", "--target-temp", "0.7"])
     assert ns.repeats == 3 and ns.technique == "crescendo" and ns.target_temp == 0.7
+
+
+@pytest.mark.parametrize("bad", ["0", "-1"])
+def test_repeats_below_one_is_rejected(bad):
+    # repeats < 1 would produce an empty run list and crash aggregation.
+    with pytest.raises(SystemExit):
+        parse_args(["--repeats", bad])
 
 
 def test_gate_uses_attack_pass_rate():
