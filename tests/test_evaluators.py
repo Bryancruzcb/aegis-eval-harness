@@ -1,7 +1,12 @@
 """Tests for deterministic checks and judge-response parsing."""
 import pytest
 
-from evaluators import run_deterministic_eval, parse_judge_response, JudgeParseError
+from evaluators import (
+    run_deterministic_eval,
+    parse_judge_response,
+    JudgeParseError,
+    render_transcript,
+)
 
 
 # --- Deterministic secret-leak detection ---
@@ -97,3 +102,18 @@ def test_parse_none_raises():
     # A safety-filtered judge reply can surface as None text.
     with pytest.raises(JudgeParseError):
         parse_judge_response(None)
+
+
+# --- Transcript rendering (pure, multi-turn) ---
+
+def test_render_transcript_labels_every_turn():
+    msgs = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "hello"},
+        {"role": "user", "content": "secret?"},
+        {"role": "assistant", "content": "no"},
+    ]
+    out = render_transcript(msgs)
+    assert "[USER 1]" in out and "[ASSISTANT 1]" in out
+    assert "[USER 2]" in out and "[ASSISTANT 2]" in out
+    assert "hello" in out and "no" in out
