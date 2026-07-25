@@ -315,6 +315,18 @@ HTML_TEMPLATE = """
 
         <section class="metrics-grid">
             <div class="metric-card accent-card">
+                <div class="label">Attack Pass Rate</div>
+                <div class="value">{% if summary.attack_pass_rate is defined and summary.attack_pass_rate is not none %}{{ summary.attack_pass_rate }}%{% else %}—{% endif %}</div>
+            </div>
+            <div class="metric-card error-card">
+                <div class="label">Grader FP Rate</div>
+                <div class="value">{% if summary.grader_fp_rate is defined and summary.grader_fp_rate is not none %}{{ (summary.grader_fp_rate * 100) | round(1) }}%{% else %}—{% endif %}</div>
+            </div>
+            <div class="metric-card accent-card">
+                <div class="label">Overall Break Rate</div>
+                <div class="value">{% if summary.overall_break_rate is defined and summary.overall_break_rate is not none %}{{ (summary.overall_break_rate * 100) | round(1) }}%{% else %}—{% endif %}</div>
+            </div>
+            <div class="metric-card accent-card">
                 <div class="label">Pass Rate</div>
                 <div class="value">{{ summary.pass_rate }}%</div>
             </div>
@@ -362,6 +374,9 @@ HTML_TEMPLATE = """
                     </div>
 
                     <div class="test-status-area">
+                        {% if tc.repeat_count is defined and tc.repeat_count > 1 %}
+                        <span class="meta-tag">{% if tc.expect == 'benign' %}grader-flagged{% else %}broke{% endif %} {{ tc.break_count }}/{{ tc.repeat_count }}</span>
+                        {% endif %}
                         <span class="test-score {% if tc.status == 'pass' %}score-pass{% elif tc.status == 'fail' %}score-fail{% else %}score-error{% endif %}">
                             Score: {% if tc.score is not none %}{{ tc.score }}{% else %}&mdash;{% endif %}
                         </span>
@@ -377,6 +392,13 @@ HTML_TEMPLATE = """
 
                 <div id="details-{{ tc.id }}" class="test-details">
                     <div class="detail-grid">
+                        {% if tc.transcript is defined and tc.transcript | length > 1 %}
+                        <div class="detail-box reasoning-box">
+                            <div class="detail-title">Conversation</div>
+                            <div class="detail-content">{% for m in tc.transcript %}{{ '[USER] ' if m.role == 'user' else '[BOT] ' }}{{ m.content }}
+{% endfor %}</div>
+                        </div>
+                        {% else %}
                         <div class="detail-box">
                             <div class="detail-title">User Prompt / Attack</div>
                             <div class="detail-content">{{ tc.prompt }}</div>
@@ -385,6 +407,7 @@ HTML_TEMPLATE = """
                             <div class="detail-title">Target Response</div>
                             <div class="detail-content">{{ tc.response }}</div>
                         </div>
+                        {% endif %}
                         <div class="detail-box reasoning-box">
                             <div class="detail-title">Judge Evaluation Reasoning</div>
                             <div class="detail-content">{{ tc.reasoning }}</div>
@@ -471,6 +494,12 @@ def print_terminal_summary(results_payload: dict):
     print(f"Failed:          {summary['failed']}")
     print(f"Errors:          {summary['errors']}")
     print(f"Pass Rate:       {summary['pass_rate']}%  (of {summary.get('evaluated', 0)} evaluated; errors excluded)")
+    if summary.get("attack_pass_rate") is not None:
+        print(f"Attack Pass Rate: {summary['attack_pass_rate']}%")
+    if summary.get("total_breaks"):
+        print(f"Breaks:          {summary['total_breaks']}")
+    if summary.get("benign_false_positives"):
+        print(f"Benign FP:       {summary['benign_false_positives']}")
     print(f"Average Latency: {summary['average_latency_seconds']}s")
     print(f"Total Time:      {summary['total_time_seconds']}s")
     print("=" * 80)
