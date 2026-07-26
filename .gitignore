@@ -13,3 +13,6 @@ venv/
 
 # SDD scratch (ledger, briefs, reports)
 .superpowers/
+
+# Benchmark cache (downloaded at runtime, never committed)
+.cache/

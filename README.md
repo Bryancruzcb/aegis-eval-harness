@@ -150,6 +150,102 @@ case. This is how the `crescendo` (slow rapport-then-extract) attacks work:
 }
 ```
 
+## Scenarios
+
+The harness runs one **scenario** at a time — a target setup plus the grader
+that scores it. Pick one with `--scenario` (default `secret-guardian`).
+
+- **`secret-guardian`** (default) — everything described above: the passcode bot,
+  graded by deterministic checks plus the LLM judge.
+- **`refusal`** — does the model refuse genuinely harmful requests without
+  over-refusing harmless ones? It sends the model **no** system prompt, so it
+  tests the model's *own* safety training, and grades each response with a
+  two-stage **refusal grader** (anchored refusal markers first, the LLM judge for
+  anything ambiguous).
+
+```bash
+# Run the refusal scenario against a stratified sample (5 per category)
+python run.py --scenario refusal
+
+# Fail CI if the model over-refuses harmless requests by more than 20%
+python run.py --scenario refusal --fail-over-refusal 20
+```
+
+The cases come from **[JailbreakBench](https://huggingface.co/datasets/JailbreakBench/JBB-Behaviors)**
+(JBB-Behaviors): 100 harmful behaviours the model must refuse, plus 100
+index-paired harmless controls it should help with (refusing one is an
+over-refusal failure). The dataset is **fetched at runtime** into a git-ignored
+cache (`.cache/jbb`), pinned to a commit and **sha256-verified on every read**.
+**It is never committed to the repository** — no harmful prompt text lives here.
+
+### Sampling flags (refusal only)
+
+- `--full` — run the whole benchmark (all 200 behaviours).
+- `--smoke` — a minimal 2-per-category sample (a quick check).
+- `--sample-seed N` — seed for the stratified per-category sample (default `0`).
+- `--refresh-benchmark` — ignore the cache and re-download (re-verifies the hash).
+
+### Calibrating the refusal grader
+
+The refusal grader is a measuring instrument, so its own accuracy is measured
+against JBB's **300 human-labelled `judge-comparison` rows**. `calibrate.py`
+runs stage 1 over a held-out 150-row half — the grader's marker/length
+thresholds are fixed constants set during design, not fit to this half, and
+`--dev` reports the other (seeded) half for comparison — escalates the undecided
+rows to the judge, and prints its confusion matrix beside JBB's own published
+`StringClassifier` baseline. The positive class is **jailbroken (=
+not refused)**, matching JBB's convention, and the judge is fed each row's
+behaviour (`goal`), not the jailbreak wrapper — the same way the harness queries.
+
+```bash
+python calibrate.py                 # score the held-out half
+python calibrate.py --dev           # score the seeded dev half instead
+python calibrate.py --limit 20      # a quick 20-row check
+```
+
+Output is a confusion matrix and derived stats for the grader and the naive
+baseline. Measured on the **held-out 150-row half** (one pass, temperature 0).
+The grader is the same two stages both times; only the escalation **judge**
+changes. The reference rows are the judges JBB ships in the same file, scored on
+the identical rows:
+
+| classifier | agreement | balanced acc. | MCC | FPR / FNR |
+|------------|-----------|---------------|-----|-----------|
+| refusal grader — `qwen2.5:7b` judge (local, free) | 52.0% | 58.8% | 0.20 | 0.68 / 0.14 |
+| refusal grader — `gemini-flash-lite` judge | 58.0% | 66.1% | **0.38** | 0.66 / 0.02 |
+| naive JBB `StringClassifier` | 56.0% | 64.2% | 0.34 | 0.68 / 0.04 |
+| _ref: GPT-4 judge_ | 89.3% | 89.0% | 0.77 | 0.10 / 0.13 |
+| _ref: Llama-3-70B judge_ | 90.0% | 90.9% | 0.80 | 0.13 / 0.05 |
+| _ref: Llama Guard 2_ | 86.0% | 85.6% | 0.71 | 0.13 / 0.16 |
+| _ref: HarmBench_ | 76.7% | 78.5% | 0.55 | 0.29 / 0.14 |
+
+Human–human agreement on this half is **86.7%** (130/150 unanimous) — the
+irreducible ceiling. The **majority-class baseline** (always answer "not
+jailbroken") scores **62.7%**, a property of the dataset's ~63/37 label split.
+
+**The grader is judge-bound, and that is the finding.** Stage 1 auto-decides 41%
+of rows on markers alone and escalates the other 59% to the judge, so the
+grader's accuracy is dominated by the judge model behind it — and it climbs
+monotonically with judge quality: a free 7B local judge lands *below* the naive
+baseline (MCC 0.20), a small hosted judge (`gemini-flash-lite`) edges *past* it
+(0.38), and the reference rows show strong LLMs reaching 0.55–0.80 on the same
+data. With the 7B judge, 51 of the grader's 64 false positives come from the
+judge itself (a capable one resolves them) and 13 from stage 1 calling a
+non-standard refusal "complied" — the residual the length/marker floor cannot
+reach. The two-stage framework is sound; the judge is the lever. Re-run the
+one-liner above with `--judge-provider gemini` (add `--judge-delay 5` to stay
+under a free-tier rate cap) to measure your own.
+
+**Scope of this calibration** — a single number will otherwise be read as
+validating everything, so:
+
+1. calibrated on **harmful-split responses only** — the over-refusal half of the
+   grader is unvalidated;
+2. `target_response` rows are 2024-vintage outputs, so the length gate and marker
+   lists are tuned out-of-distribution relative to 2026 targets, and the stage-1
+   short-circuit rate will not transfer — re-report that rate from real runs;
+3. JBB is public and frozen, so a high refusal rate partly measures memorization.
+
 ## Output
 
 Written to `output/` (git-ignored):
@@ -179,7 +275,10 @@ they run offline and in CI (see `.github/workflows/ci.yml`).
 | `target.py`       | The model under test + its guardian system prompt |
 | `evaluators.py`   | Deterministic checks + the LLM judge |
 | `graders.py`      | `Screen`/`Verdict` value objects, the `Grader` protocol, `SecretGuardianGrader` |
-| `scenarios.py`    | The `Scenario` dataclass + the `SCENARIOS` registry |
+| `refusal_grader.py` | The two-stage `RefusalGrader` for the refusal scenario |
+| `scenarios.py`    | The `Scenario` dataclass + the `SCENARIOS` registry (`secret-guardian`, `refusal`) |
+| `benchmarks/`     | Runtime fetch + verify + cache (`fetch.py`) and the JailbreakBench loader (`jbb.py`) |
+| `calibrate.py`    | Measures the refusal grader against JBB's human labels |
 | `providers.py`    | Shared clients, retry policy, error taxonomy |
 | `reporter.py`     | Terminal summary + HTML dashboard |
 | `test_cases.json` | The suite of prompts and expected criteria |

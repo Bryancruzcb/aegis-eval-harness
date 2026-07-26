@@ -26,7 +26,7 @@ logger = logging.getLogger("AegisEval.Runner")
 
 
 _VALID_CATEGORY = {"functional", "safety", "security"}
-_VALID_EXPECT = {"refuse", "benign"}
+_VALID_EXPECT = {"refuse", "benign", "comply"}
 
 
 def load_test_cases(raw):
@@ -170,10 +170,26 @@ async def run_single_test(test_case, semaphore, *, scenario=SECRET_GUARDIAN,
                            eval_type=_eval_type(None), latency=latency, transcript=transcript,
                            false_positive=v.false_positive)
         logger.info(f"Deterministic checks passed for {tc_id}. Invoking LLM Judge...")
+        # A grader whose judge answers a non-default schema (e.g. the refusal
+        # grader) supplies its own parser via a ``parse_judgment`` attribute; the
+        # kwarg is passed only when present, so a grader without one — and the
+        # test doubles that stub ``judge_fn`` without a ``parse=`` parameter —
+        # keep the judge's built-in default.
+        judge_kwargs = {}
+        grader_parse = getattr(grader, "parse_judgment", None)
+        if grader_parse is not None:
+            judge_kwargs["parse"] = grader_parse
+        # ...and the matching Gemini response schema. Passed only alongside a custom
+        # parser, so a grader with neither (and the test doubles that stub judge_fn
+        # without these params) keep the judge's built-in secret-guardian schema.
+        grader_schema = getattr(grader, "judge_schema", None)
+        if grader_schema is not None:
+            judge_kwargs["response_schema"] = grader_schema
         try:
             judged = await judge_fn(transcript, base["expected_criteria"],
                                     provider=judge_provider, model=judge_model,
-                                    system_instruction=grader.judge_system_prompt(test_case))
+                                    system_instruction=grader.judge_system_prompt(test_case),
+                                    **judge_kwargs)
         except (ProviderError, JudgeParseError) as e:
             # Return before asking for a verdict: with no judge answer there is
             # nothing to grade, and ``verdict`` requires a non-None ``judged``
@@ -229,7 +245,8 @@ def aggregate_repeats(runs):
             "evaluated_runs": evaluated_runs, "break_rate": break_rate}
 
 
-def build_summary(results, target_label, judge_label, total_time_seconds, timestamp=None) -> dict:
+def build_summary(results, target_label, judge_label, total_time_seconds, timestamp=None,
+                  *, scenario_name="secret-guardian") -> dict:
     """Aggregate results into a summary. Always returns every key, even for an
     empty result set, so the reporter never hits a missing field.
 
@@ -248,6 +265,14 @@ def build_summary(results, target_label, judge_label, total_time_seconds, timest
 
     refuse = [r for r in results if r.get("expect", "refuse") == "refuse"]
     benign = [r for r in results if r.get("expect", "refuse") == "benign"]
+    # Control = every case the model was NOT supposed to resist. For
+    # secret-guardian that is the benign traps (a failure means the grader
+    # over-flagged); for refusal it is the harmless requests (a failure means
+    # the model over-refused). Attack + control always partition the results.
+    control = [r for r in results if r.get("expect", "refuse") != "refuse"]
+    control_failed = sum(1 for r in control if r.get("status") == "fail")
+    control_eval = sum(1 for r in control if r.get("status") in ("pass", "fail"))
+    control_fail_rate = round(control_failed / control_eval, 4) if control_eval else None
 
     a_pass = sum(1 for r in refuse if r.get("status") == "pass")
     a_fail = sum(1 for r in refuse if r.get("status") == "fail")
@@ -268,6 +293,7 @@ def build_summary(results, target_label, judge_label, total_time_seconds, timest
         "timestamp": timestamp or time.strftime("%Y-%m-%d %H:%M:%S"),
         "target": target_label,
         "judge": judge_label,
+        "scenario": scenario_name,
         "total": total,
         "passed": passed,
         "failed": failed,
@@ -281,6 +307,8 @@ def build_summary(results, target_label, judge_label, total_time_seconds, timest
         "total_breaks": total_breaks, "overall_break_rate": overall_break_rate,
         "benign_total": len(benign), "benign_false_positives": b_fp,
         "benign_evaluated": b_eval, "grader_fp_rate": grader_fp_rate,
+        "control_total": len(control), "control_failed": control_failed,
+        "control_fail_rate": control_fail_rate,
     }
 
 
@@ -315,41 +343,50 @@ async def run_case_repeated(test_case, semaphore, *, repeats, query_fn, judge_fn
 async def run_suite(tag_filter=None, category_filter=None, technique_filter=None, repeats=1,
                     target_provider=None, target_model=None, judge_provider=None,
                     judge_model=None, target_temperature=None, query_fn=None, judge_fn=None,
-                    *, scenario=SECRET_GUARDIAN):
+                    *, scenario=SECRET_GUARDIAN, load_kwargs=None):
     """Load, filter, and run all test cases; return results plus a summary.
 
     The scenario supplies both the cases and the grading, so a different
     scenario changes what runs and how it is scored without touching this
-    function.
+    function. ``load_kwargs`` is forwarded verbatim to ``scenario.load_cases``
+    (the CLI uses it to pass the refusal benchmark's sampling options); a loader
+    that does not recognise a key must ignore it.
+
+    Loading AND the technique/category filters run inside one ``try``: a loader
+    that raises, or that returns malformed cases missing ``technique``/
+    ``category``, degrades to the ``{"error": ...}`` payload rather than crashing
+    the suite with a traceback.
     """
     try:
-        cases = scenario.load_cases()
+        cases = scenario.load_cases(**(load_kwargs or {}))
+        # Taken from the data as loaded, so the --technique warning below still lists
+        # something useful when --tag/--category already emptied the selection.
+        available_techniques = sorted({c["technique"] for c in cases})
+        if category_filter:
+            cases = [c for c in cases if c["category"] == category_filter]
+        if tag_filter:
+            cases = [c for c in cases if tag_filter in c.get("tags", [])]
+        if technique_filter:
+            cases = [c for c in cases if c["technique"] == technique_filter]
+            if not cases:
+                # spec 4.8: warn with the valid techniques, then proceed empty.
+                logger.warning(
+                    f"--technique '{technique_filter}' matched no test cases. "
+                    f"Valid techniques in the selected data: {', '.join(available_techniques)}. "
+                    "Proceeding with an empty selection."
+                )
     except Exception as e:
         logger.error(f"Failed to load cases for scenario '{scenario.name}': {e}")
         return {"error": str(e)}
-    # Taken from the data as loaded, so the --technique warning below still lists
-    # something useful when --tag/--category already emptied the selection.
-    available_techniques = sorted({c["technique"] for c in cases})
-    if category_filter:
-        cases = [c for c in cases if c["category"] == category_filter]
-    if tag_filter:
-        cases = [c for c in cases if tag_filter in c.get("tags", [])]
-    if technique_filter:
-        cases = [c for c in cases if c["technique"] == technique_filter]
-        if not cases:
-            # spec 4.8: warn with the valid techniques, then proceed empty.
-            logger.warning(
-                f"--technique '{technique_filter}' matched no test cases. "
-                f"Valid techniques in the selected data: {', '.join(available_techniques)}. "
-                "Proceeding with an empty selection."
-            )
     logger.info(f"Selected {len(cases)} test case(s).")
     target_label = f"{target_provider or config.DEFAULT_TARGET_PROVIDER}:{target_model or config.DEFAULT_TARGET_MODEL}"
     judge_label = f"{judge_provider or config.DEFAULT_JUDGE_PROVIDER}:{judge_model or config.DEFAULT_JUDGE_MODEL}"
     if not cases:
         if not technique_filter:
             logger.warning("No test cases match the selection criteria.")
-        return {"results": [], "summary": build_summary([], target_label, judge_label, 0.0)}
+        return {"results": [],
+                "summary": build_summary([], target_label, judge_label, 0.0,
+                                         scenario_name=scenario.name)}
     semaphore = asyncio.Semaphore(config.MAX_CONCURRENT_REQUESTS)
     start = time.time()
     raw_results = await asyncio.gather(*[
@@ -369,7 +406,8 @@ async def run_suite(tag_filter=None, category_filter=None, technique_filter=None
             results.append(_internal_error_result(c, r))
         else:
             results.append(r)
-    summary = build_summary(results, target_label, judge_label, total_time)
+    summary = build_summary(results, target_label, judge_label, total_time,
+                            scenario_name=scenario.name)
     logger.info(
         f"Suite completed. Pass rate: {summary['pass_rate']}% "
         f"({summary['passed']}/{summary['evaluated']} evaluated, {summary['errors']} error(s)) "

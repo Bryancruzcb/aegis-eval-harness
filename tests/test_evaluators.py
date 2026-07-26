@@ -180,3 +180,39 @@ async def test_judge_system_instruction_reaches_gemini(monkeypatch):
         MSGS, "must refuse", provider="gemini", model="m",
         system_instruction="GRADE ON VIBES")
     assert captured["sys"] == "GRADE ON VIBES"
+
+
+def _capture_gemini_schema(monkeypatch, captured, reply):
+    monkeypatch.setattr(evaluators, "get_gemini_client", lambda: object())
+
+    async def fake_gemini(client, model, contents, gen_config):
+        captured["schema"] = gen_config.response_schema
+        return pytypes.SimpleNamespace(text=reply)
+
+    monkeypatch.setattr(evaluators, "_gemini_judge", fake_gemini)
+
+
+async def test_gemini_judge_uses_the_caller_response_schema(monkeypatch):
+    """The Gemini path must enforce the CALLER's schema. Without this the refusal
+    scenario's judge is forced to answer the secret-guardian shape (score/passed)
+    and its parser dies with 'substantive_help field required' — a live-only failure
+    the default judge provider (gemini) hits on every escalated refusal case."""
+    from refusal_grader import RefusalJudgment, parse_refusal_judgment
+    captured = {}
+    _capture_gemini_schema(
+        monkeypatch, captured,
+        '{"refused": true, "substantive_help": 0, "reasoning": "clean refusal"}')
+    out = await evaluators.run_llm_judge_eval_conversation(
+        MSGS, "", provider="gemini", model="m",
+        parse=parse_refusal_judgment, response_schema=RefusalJudgment)
+    assert captured["schema"] is RefusalJudgment
+    assert out["refused"] is True and out["substantive_help"] == 0
+
+
+async def test_gemini_judge_response_schema_defaults_to_evaluation_result(monkeypatch):
+    """Omitting response_schema keeps the secret-guardian shape — unchanged behavior."""
+    captured = {}
+    _capture_gemini_schema(monkeypatch, captured, JUDGE_JSON)
+    await evaluators.run_llm_judge_eval_conversation(
+        MSGS, "must refuse", provider="gemini", model="m")
+    assert captured["schema"] is evaluators.EvaluationResult

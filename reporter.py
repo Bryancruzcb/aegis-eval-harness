@@ -4,6 +4,7 @@ The HTML template is rendered with autoescaping ON: the target model's output is
 untrusted (a jailbroken response could contain markup), so every interpolated
 value is HTML-escaped to keep the report from executing model-supplied scripts.
 """
+import hashlib
 import logging
 
 from jinja2 import Template
@@ -11,6 +12,24 @@ from jinja2 import Template
 import config
 
 logger = logging.getLogger("AegisEval.Reporter")
+
+
+def redact(text: str, keep: int = 120) -> str:
+    """Truncate a response to ``keep`` characters and append a content hash.
+
+    The HTML report is the artifact most likely to be shared or screenshotted,
+    and for any case the model complied with it would otherwise contain working
+    harmful content verbatim. The hash keeps results comparable across runs.
+
+    ``keep`` is the preview length. For harmful-prompt responses the caller
+    passes ``keep=0`` (hash only): a short compliance fits inside any non-zero
+    window, so a preview of a compliance is itself the leak this guards against.
+    """
+    text = text or ""
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+    head = text[:keep]
+    suffix = "…" if len(text) > keep else ""
+    return f"{head}{suffix}  [redacted, sha256:{digest}]"
 
 # Modern, premium dark-mode HTML dashboard template
 HTML_TEMPLATE = """
@@ -315,7 +334,7 @@ HTML_TEMPLATE = """
 
         <section class="metrics-grid">
             <div class="metric-card accent-card">
-                <div class="label">Attack Pass Rate</div>
+                <div class="label">Attack Pass Rate{% if summary.scenario is defined and summary.scenario == 'refusal' %} <span style="text-transform:none;font-weight:400;">(harmful prompts refused)</span>{% endif %}</div>
                 <div class="value">{% if summary.attack_pass_rate is defined and summary.attack_pass_rate is not none %}{{ summary.attack_pass_rate }}%{% else %}—{% endif %}</div>
             </div>
             <div class="metric-card error-card">
@@ -326,10 +345,18 @@ HTML_TEMPLATE = """
                 <div class="label">Overall Break Rate</div>
                 <div class="value">{% if summary.overall_break_rate is defined and summary.overall_break_rate is not none %}{{ (summary.overall_break_rate * 100) | round(1) }}%{% else %}—{% endif %}</div>
             </div>
+            {% if summary.scenario is not defined or summary.scenario != 'refusal' %}
             <div class="metric-card accent-card">
                 <div class="label">Pass Rate</div>
                 <div class="value">{{ summary.pass_rate }}%</div>
             </div>
+            {% endif %}
+            {% if summary.control_total is defined and summary.control_total %}
+            <div class="metric-card error-card">
+                <div class="label">Over-refusal Rate</div>
+                <div class="value">{% if summary.control_fail_rate is defined and summary.control_fail_rate is not none %}{{ (summary.control_fail_rate * 100) | round(1) }}%{% else %}—{% endif %}</div>
+            </div>
+            {% endif %}
             <div class="metric-card accent-card">
                 <div class="label">Total Cases</div>
                 <div class="value">{{ summary.total }}</div>
@@ -375,7 +402,7 @@ HTML_TEMPLATE = """
 
                     <div class="test-status-area">
                         {% if tc.repeat_count is defined and tc.repeat_count > 1 %}
-                        <span class="meta-tag">{% if tc.expect == 'benign' %}grader-flagged{% else %}broke{% endif %} {{ tc.break_count }}/{{ tc.repeat_count }}</span>
+                        <span class="meta-tag">{% if tc.expect == 'benign' %}grader-flagged{% elif tc.expect == 'comply' %}over-refused{% else %}broke{% endif %} {{ tc.break_count }}/{{ tc.repeat_count }}</span>
                         {% endif %}
                         {% if tc.false_positive is defined and tc.false_positive %}<span class="meta-tag">grader FP</span>{% endif %}
                         <span class="test-score {% if tc.status == 'pass' %}score-pass{% elif tc.status == 'fail' %}score-fail{% else %}score-error{% endif %}">

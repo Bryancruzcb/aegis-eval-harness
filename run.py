@@ -18,7 +18,8 @@ import sys
 
 import config
 from runner import run_suite
-from reporter import print_terminal_summary, generate_html_report
+from scenarios import SCENARIOS
+from reporter import print_terminal_summary, generate_html_report, redact
 
 logger = logging.getLogger("AegisEval.CLI")
 
@@ -63,12 +64,44 @@ def parse_args(argv=None):
                         help="Run each case N times; take-worst aggregation")
     parser.add_argument("--target-temp", type=float, default=config.TARGET_TEMPERATURE,
                         help="Target sampling temperature (repeats vary only when > 0)")
+    parser.add_argument("--scenario", default="secret-guardian",
+                        choices=sorted(SCENARIOS), help="Which scenario to run")
+    parser.add_argument("--full", action="store_true",
+                        help="Run the whole benchmark instead of a sample (refusal only)")
+    parser.add_argument("--smoke", action="store_true",
+                        help="Run a minimal 2-per-category sample (refusal only)")
+    parser.add_argument("--sample-seed", type=int, default=0,
+                        help="Seed for the stratified sample")
+    parser.add_argument("--refresh-benchmark", action="store_true",
+                        help="Ignore the cache and re-download the benchmark")
+    parser.add_argument("--fail-over-refusal", type=float, default=None, metavar="PCT",
+                        help="Exit non-zero if the control-case failure rate (over-refusal of "
+                             "harmless requests) exceeds this percentage (e.g. 20)")
+    parser.add_argument("--allow-self-grading", action="store_true",
+                        help="Permit the same model to grade its own output (target == judge); "
+                             "refused by default because a self-report is not an evaluation")
+    parser.add_argument("--include-responses", action="store_true",
+                        help="Write full model responses to the report/JSON instead of redacting "
+                             "harmful-prompt responses")
     args = parser.parse_args(argv)
     # Also validates config.REPEATS_PER_CASE, which supplies the default: a
     # repeats of 0 would aggregate an empty run list.
     if args.repeats < 1:
         parser.error("--repeats must be >= 1")
+    if args.full and args.smoke:
+        parser.error("--full and --smoke are mutually exclusive")
     return args
+
+
+def load_kwargs_from_args(args) -> dict:
+    """Translate the sampling CLI flags into ``load_jbb_cases`` keyword args.
+
+    The flags are user-facing (``--full``/``--smoke``/``--sample-seed``/
+    ``--refresh-benchmark``); the loader takes ``mode``/``seed``/``refresh``.
+    Neither ``--full`` nor ``--smoke`` means the default stratified sample.
+    """
+    mode = "full" if args.full else "smoke" if args.smoke else "sample"
+    return {"mode": mode, "seed": args.sample_seed, "refresh": args.refresh_benchmark}
 
 
 def missing_keys(target_provider: str, judge_provider: str) -> list:
@@ -98,7 +131,12 @@ def _gate_eval(summary: dict):
     return summary.get("attack_evaluated", summary["evaluated"])
 
 
-def decide_exit_code(summary: dict, fail_under) -> int:
+def is_self_grading(target_label: str, judge_label: str) -> bool:
+    """True when the same model grades its own output — a self-report, not an evaluation."""
+    return target_label == judge_label
+
+
+def decide_exit_code(summary: dict, fail_under, fail_over_refusal=None) -> int:
     """Map a run summary to a process exit code for CI.
 
     0 = ok, 1 = quality gate failed or every case errored (inconclusive).
@@ -112,7 +150,58 @@ def decide_exit_code(summary: dict, fail_under) -> int:
     gate_eval = _gate_eval(summary)
     if fail_under is not None and gate_eval and gate_rate is not None and gate_rate < fail_under:
         return 1  # quality gate failed
+    # A model that refuses everything scores a perfect attack rate; the control
+    # half is the only thing that catches it. control_fail_rate is a FRACTION
+    # (0-1); fail_over_refusal is a PERCENT — the *100 bridges the units.
+    cfr = summary.get("control_fail_rate")
+    if (fail_over_refusal is not None and summary.get("control_total", 0) > 0
+            and cfr is not None and cfr * 100.0 > fail_over_refusal):
+        return 1  # over-refusal ceiling exceeded
     return 0
+
+
+def redact_harmful_responses(payload: dict) -> dict:
+    """Redact model output for harmful-prompt (``expect == "refuse"``) cases,
+    in place: the ``response`` field, the assistant turns of the transcript, and
+    the judge's ``reasoning``.
+
+    The whole harmful split is blanket-redacted, not just the cases the model
+    complied with: a redacted refusal is harmless (a truncated refusal), while an
+    un-redacted compliance is the exact leak this guard exists to prevent. Non-
+    harmful cases (the harmless controls) are left untouched.
+
+    ``reasoning`` is redacted too, because on a compliance the judge paraphrases
+    what the model produced ("the model complied, providing steps: mix X with
+    Y…") — a description of the payload is still a leak, and it renders in the same
+    HTML report and JSON the response redaction protects. Status and score (which
+    carry no free text) still describe every case; ``--include-responses`` brings
+    the raw text back for local debugging.
+    """
+    for r in payload.get("results", []):
+        if r.get("expect", "refuse") != "refuse":
+            continue
+        # keep=0 (hash only, no preview): a short compliance fits inside any
+        # non-zero preview window, so the preview IS the leak.
+        r["response"] = redact(r.get("response"), keep=0)
+        if r.get("reasoning"):
+            r["reasoning"] = redact(r["reasoning"], keep=0)
+        for msg in r.get("transcript") or []:
+            if msg.get("role") in ("assistant", "bot"):
+                msg["content"] = redact(msg.get("content"), keep=0)
+    return payload
+
+
+def maybe_redact_responses(payload: dict, args) -> dict:
+    """Apply harmful-response redaction before the report/JSON are written,
+    unless this is not the refusal scenario or ``--include-responses`` opted out.
+
+    Redaction is ON by default (the flag is off by default): the report is the
+    artifact most likely to be shared or screenshotted, so a complied harmful
+    response must not ship in it unless the operator explicitly asks for it.
+    """
+    if args.scenario == "refusal" and not args.include_responses:
+        redact_harmful_responses(payload)
+    return payload
 
 
 def _archive(stable_path: str, timestamp: str, suffix: str):
@@ -136,6 +225,18 @@ async def main_async() -> int:
         print("Or run against a local model with:  --target-provider ollama --judge-provider ollama")
         return 2
 
+    # Labels are built exactly as the runner builds them, so the self-grading
+    # check keys off the same provider:model strings the report will show.
+    target_label = f"{args.target_provider or config.DEFAULT_TARGET_PROVIDER}:{args.target_model or config.DEFAULT_TARGET_MODEL}"
+    judge_label = f"{args.judge_provider or config.DEFAULT_JUDGE_PROVIDER}:{args.judge_model or config.DEFAULT_JUDGE_MODEL}"
+    if is_self_grading(target_label, judge_label) and not args.allow_self_grading:
+        print(f"{YELLOW}[Config] Refusing to run: the target and the judge are the same model "
+              f"({target_label}). A model grading its own output is a self-report, not an "
+              f"independent evaluation.{RESET}")
+        print("Use a different --judge-model/--judge-provider, or pass --allow-self-grading "
+              "to acknowledge the limitation.")
+        return 2  # distinct from the quality-gate's exit 1
+
     print("Initializing AegisEval Suite...")
 
     payload = await run_suite(
@@ -148,6 +249,8 @@ async def main_async() -> int:
         judge_provider=args.judge_provider,
         judge_model=args.judge_model,
         target_temperature=args.target_temp,
+        scenario=SCENARIOS[args.scenario],
+        load_kwargs=load_kwargs_from_args(args),
     )
 
     if "error" in payload:
@@ -155,6 +258,10 @@ async def main_async() -> int:
         return 2
 
     summary = payload["summary"]
+
+    # Redact harmful-prompt responses (refusal scenario, unless --include-responses)
+    # BEFORE either artifact is written, so neither the JSON nor the HTML ships them.
+    maybe_redact_responses(payload, args)
 
     # Persist raw results (stable name + timestamped archive).
     raw_path = config.OUTPUT_DIR / "run_results.json"
@@ -176,15 +283,29 @@ async def main_async() -> int:
         print(f"{YELLOW}⚠ {summary['errors']} case(s) errored (infrastructure issue, not a model failure).{RESET}")
 
     # Exit-code policy for CI.
-    exit_code = decide_exit_code(summary, args.fail_under)
+    exit_code = decide_exit_code(summary, args.fail_under, args.fail_over_refusal)
     if exit_code != 0:
+        cfr = summary.get("control_fail_rate")
+        over_refusing = (
+            args.fail_over_refusal is not None and summary.get("control_total", 0) > 0
+            and cfr is not None and cfr * 100.0 > args.fail_over_refusal
+        )
+        under_performing = (
+            args.fail_under is not None and _gate_eval(summary)
+            and _gate_rate(summary) is not None and _gate_rate(summary) < args.fail_under
+        )
         if summary["total"] > 0 and summary["evaluated"] == 0:
             print(f"{RED}Run inconclusive: every case errored.{RESET}")
         elif summary.get("attack_total", 0) > 0 and summary.get("attack_evaluated", 1) == 0:
             print(f"{RED}Run inconclusive: every attack case errored (judge/target outage).{RESET}")
         else:
-            print(f"{RED}Quality gate failed: attack pass rate {_gate_rate(summary)}% "
-                  f"< {args.fail_under}%.{RESET}")
+            if under_performing:
+                print(f"{RED}Quality gate failed: attack pass rate {_gate_rate(summary)}% "
+                      f"< {args.fail_under}%.{RESET}")
+            if over_refusing:
+                print(f"{RED}Over-refusal gate failed: control failure rate "
+                      f"{round(cfr * 100.0, 1)}% > {args.fail_over_refusal}% "
+                      f"(the model refuses harmless requests).{RESET}")
     return exit_code
 
 

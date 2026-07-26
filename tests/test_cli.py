@@ -35,6 +35,33 @@ def test_parse_args_new_flags():
     assert ns.repeats == 3 and ns.technique == "crescendo" and ns.target_temp == 0.7
 
 
+def test_parse_args_scenario_and_sampling_flags():
+    ns = parse_args(["--scenario", "refusal", "--full", "--sample-seed", "7"])
+    assert ns.scenario == "refusal" and ns.full is True and ns.sample_seed == 7
+
+
+def test_unknown_scenario_is_rejected():
+    with pytest.raises(SystemExit):
+        parse_args(["--scenario", "nope"])
+
+
+def test_sampling_flags_map_to_loader_kwargs():
+    from run import load_kwargs_from_args
+    ns = parse_args(["--smoke", "--sample-seed", "3", "--refresh-benchmark"])
+    assert load_kwargs_from_args(ns) == {"mode": "smoke", "seed": 3, "refresh": True}
+
+
+def test_default_and_full_map_to_expected_modes():
+    from run import load_kwargs_from_args
+    assert load_kwargs_from_args(parse_args([]))["mode"] == "sample"
+    assert load_kwargs_from_args(parse_args(["--full"]))["mode"] == "full"
+
+
+def test_full_and_smoke_together_is_rejected():
+    with pytest.raises(SystemExit):
+        parse_args(["--full", "--smoke"])
+
+
 @pytest.mark.parametrize("bad", ["0", "-1"])
 def test_repeats_below_one_is_rejected(bad):
     # repeats < 1 would produce an empty run list and crash aggregation.
@@ -70,3 +97,41 @@ def test_judge_outage_exits_one():
     s = {"total": 14, "evaluated": 6, "pass_rate": 100.0,
          "attack_total": 6, "attack_evaluated": 0, "attack_pass_rate": None}
     assert decide_exit_code(s, None) == 1
+
+
+def test_over_refusal_above_ceiling_fails():
+    s = {"total": 40, "evaluated": 40, "pass_rate": 100.0,
+         "attack_total": 20, "attack_evaluated": 20, "attack_pass_rate": 100.0,
+         "control_total": 20, "control_fail_rate": 1.0}
+    # A model that refuses everything: perfect attack score, total over-refusal.
+    assert decide_exit_code(s, None, fail_over_refusal=50.0) == 1
+
+
+def test_over_refusal_within_ceiling_passes():
+    s = {"total": 40, "evaluated": 40, "pass_rate": 95.0,
+         "attack_total": 20, "attack_evaluated": 20, "attack_pass_rate": 95.0,
+         "control_total": 20, "control_fail_rate": 0.1}
+    assert decide_exit_code(s, 80, fail_over_refusal=50.0) == 0
+
+
+def test_over_refusal_gate_ignored_without_control_cases():
+    s = {"total": 20, "evaluated": 20, "pass_rate": 100.0,
+         "attack_total": 20, "attack_evaluated": 20, "attack_pass_rate": 100.0,
+         "control_total": 0, "control_fail_rate": None}
+    assert decide_exit_code(s, None, fail_over_refusal=50.0) == 0
+
+
+def test_self_grading_is_detected():
+    from run import is_self_grading
+    assert is_self_grading("ollama:llama3.2:3b", "ollama:llama3.2:3b") is True
+    assert is_self_grading("gemini:x", "ollama:y") is False
+
+
+def test_under_performing_and_over_refusing_both_fail_returns_one():
+    # A model can under-perform on attacks AND over-refuse controls at once;
+    # either failing alone is exit 1, so both failing must stay exit 1 — the new
+    # over-refusal branch must not short-circuit the existing fail_under branch.
+    s = {"total": 40, "evaluated": 40, "pass_rate": 50.0,
+         "attack_total": 20, "attack_evaluated": 20, "attack_pass_rate": 50.0,
+         "control_total": 20, "control_fail_rate": 1.0}
+    assert decide_exit_code(s, 80, fail_over_refusal=50.0) == 1
