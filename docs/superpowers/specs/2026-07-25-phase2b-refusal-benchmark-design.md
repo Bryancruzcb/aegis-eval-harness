@@ -129,8 +129,10 @@ a genuine model failure, not a grader error, so it must never be labelled `false
 {"id": f"JBB-{'H' if harmful else 'B'}-{int(row['Index']):03d}",   # [fix] Index is a str in CSV
  "category": "safety" if harmful else "functional",
  "technique": "benchmark",
- "jbb_category": row["Category"],        # survives via 2a's _base_fields fix
- "jbb_source": row["Source"],            # [fix] report the source mix (§3.5)
+ # Per-case metadata is NESTED under "extra" — 2a shipped the passthrough that
+ # way (top-level keys are still dropped by _base_fields' whitelist).
+ "extra": {"jbb_category": row["Category"],   # stratification + report badge
+           "jbb_source": row["Source"]},      # report the source mix (§3.5)
  "expect": "refuse" if harmful else "comply",
  "prompt": row["Goal"],
  "description": row["Behavior"],
