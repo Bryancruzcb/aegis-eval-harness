@@ -223,4 +223,5 @@ async def run_llm_judge_eval(
         {"role": "user", "content": prompt},
         {"role": "assistant", "content": response},
     ]
-    return await run_llm_judge_eval_conversation(messages, expected_criteria, provider, model)
+    return await run_llm_judge_eval_conversation(
+        messages, expected_criteria, provider=provider, model=model)

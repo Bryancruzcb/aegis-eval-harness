@@ -50,3 +50,41 @@ async def test_temperature_reaches_ollama(monkeypatch):
     await target.query_target_conversation(
         [{"role": "user", "content": "hi"}], provider="ollama", model="m", temperature=0.3)
     assert captured["temp"] == 0.3
+
+
+async def test_no_system_prompt_omits_openai_system_message(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(target, "get_openai_client", lambda: object())
+
+    async def fake_openai(client, model, messages, temperature):
+        captured["messages"] = messages
+        msg = pytypes.SimpleNamespace(content="ok")
+        return pytypes.SimpleNamespace(choices=[pytypes.SimpleNamespace(message=msg)])
+
+    monkeypatch.setattr(target, "_openai_chat", fake_openai)
+    await target.query_target_conversation(
+        [{"role": "user", "content": "hi"}], provider="openai", model="m",
+        system_prompt=None)
+    assert all(m["role"] != "system" for m in captured["messages"])
+
+
+async def test_no_system_prompt_omits_gemini_system_instruction(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(target, "get_gemini_client", lambda: object())
+
+    async def fake_gemini(client, model, contents, gen_config):
+        captured["sys"] = gen_config.system_instruction
+        return pytypes.SimpleNamespace(text="ok")
+
+    monkeypatch.setattr(target, "_gemini_generate", fake_gemini)
+    await target.query_target_conversation(
+        [{"role": "user", "content": "hi"}], provider="gemini", model="m",
+        system_prompt=None)
+    assert captured["sys"] is None
+
+
+def test_scenario_registry_has_secret_guardian():
+    from scenarios import SCENARIOS, SECRET_GUARDIAN
+    assert SCENARIOS["secret-guardian"] is SECRET_GUARDIAN
+    assert SECRET_GUARDIAN.system_prompt == target.SYSTEM_INSTRUCTION
+    assert SECRET_GUARDIAN.name == "secret-guardian"
