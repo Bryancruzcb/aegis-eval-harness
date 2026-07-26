@@ -19,10 +19,24 @@ numbers match how the harness actually queries.
 import argparse
 import asyncio
 import math
+import sys
 
 import config
 from benchmarks import jbb
 from refusal_grader import JUDGE_PROMPT, parse_refusal_judgment, screen_behavior
+
+
+def _force_utf8_output():
+    """Windows consoles default to cp1252, which can't encode the em dashes this
+    script prints. Switch stdout/stderr to UTF-8 so output never crashes. Mirrors
+    run.py's guard; duplicated rather than imported to keep this script standalone."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure:
+            try:
+                reconfigure(encoding="utf-8")
+            except (ValueError, OSError):
+                pass
 
 # The dev/held-out split is seeded so "held-out" means the same 150 rows on every
 # run; calibrating on one half and quoting the other keeps the reported figure
@@ -148,9 +162,13 @@ async def _judge_jailbroken(goal: str, response: str, provider, model) -> bool:
 
 
 async def _grader_pairs(rows, *, provider, model, use_judge):
-    """(predicted_jailbroken, actual) for the grader, plus a count of rows that
-    escalated but could not be resolved because no judge was configured."""
-    pairs, unresolved = [], 0
+    """Returns (pairs, scored_rows, unresolved):
+    - ``pairs``: (predicted_jailbroken, actual) for every row the grader RESOLVED.
+    - ``scored_rows``: the rows behind those pairs — all of them when a judge runs,
+      only the stage-1 auto-decided subset without one. The naive baseline is scored
+      over exactly this set so the two confusion matrices share a denominator.
+    - ``unresolved``: rows that escalated but were dropped for lack of a judge."""
+    pairs, scored, unresolved = [], [], 0
     for r in rows:
         actual = _actual_jailbroken(r)
         pred = _stage1_prediction(r.get("response", ""))
@@ -161,7 +179,8 @@ async def _grader_pairs(rows, *, provider, model, use_judge):
             pred = await _judge_jailbroken(
                 r.get("goal", ""), r.get("response", ""), provider, model)
         pairs.append((pred, actual))
-    return pairs, unresolved
+        scored.append(r)
+    return pairs, scored, unresolved
 
 
 def _format_block(title: str, pairs, rows) -> str:
@@ -196,6 +215,7 @@ def _parse_args(argv):
 
 
 def main(argv=None) -> int:
+    _force_utf8_output()
     args = _parse_args(argv)
 
     rows = _fetch_rows(refresh=args.refresh_benchmark)
@@ -207,11 +227,17 @@ def main(argv=None) -> int:
 
     use_judge = _judge_available(args.judge_provider)
 
-    grader_pairs, unresolved = asyncio.run(_grader_pairs(
+    grader_pairs, scored_rows, unresolved = asyncio.run(_grader_pairs(
         chosen, provider=args.judge_provider, model=args.judge_model, use_judge=use_judge))
+    # Score the naive baseline over exactly the rows the grader resolved, so the two
+    # confusion matrices share a denominator. With a judge that is every row; without
+    # one it is the stage-1 auto-decided subset — comparing the grader on the easy
+    # rows against naive on all rows would flatter the grader.
     naive_pairs = [(naive_is_jailbroken(r.get("response", "")), _actual_jailbroken(r))
-                   for r in chosen]
+                   for r in scored_rows]
 
+    grader_title = ("refusal grader (stage 1 + judge)" if use_judge
+                    else "refusal grader (stage 1 only, auto-decided rows)")
     h = human_agreement(chosen)
     print(f"Refusal-grader calibration — {half} half, {len(chosen)} rows "
           f"(positive class = JAILBROKEN)")
@@ -219,12 +245,13 @@ def main(argv=None) -> int:
           f"({h['unanimous_share']}% unanimous) — the accuracy ceiling")
     if not use_judge:
         print("  NOTE: no judge configured — stage-1 escalations are UNRESOLVED and "
-              f"excluded from the grader block below ({unresolved} of {len(chosen)} rows). "
-              "Configure a judge model for the full grader figure.")
+              f"excluded ({unresolved} of {len(chosen)} rows). Both blocks below score "
+              f"only the {len(scored_rows)} auto-decided rows; configure a judge for the "
+              "full-coverage figure.")
     print()
-    print(_format_block("refusal grader (stage 1 + judge)", grader_pairs, chosen))
+    print(_format_block(grader_title, grader_pairs, scored_rows))
     print()
-    print(_format_block("naive JBB string classifier", naive_pairs, chosen))
+    print(_format_block("naive JBB string classifier", naive_pairs, scored_rows))
     return 0
 
 

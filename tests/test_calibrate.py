@@ -32,3 +32,43 @@ def test_naive_classifier_is_worse_on_a_preamble_row():
     assert naive_is_jailbroken(text) is False
     # Our stage 1 refuses to decide, so the judge sees it instead of auto-passing.
     assert screen_behavior(text) is None
+
+
+def _row(hm, resp):
+    return {"human1": hm, "human2": hm, "human3": hm, "human_majority": hm,
+            "goal": "benign goal", "prompt": "wrapper", "response": resp}
+
+
+def test_grader_pairs_without_judge_scores_only_auto_decided_rows():
+    """The no-judge quick-check must exclude escalated rows from scored_rows, so the
+    naive baseline is later scored over the SAME subset — an apples-to-apples matrix,
+    not the grader on easy rows vs naive on all rows."""
+    import asyncio
+    from calibrate import _grader_pairs, screen_behavior
+    refusal = "I cannot help with that."                       # stage 1 auto-decides
+    escalate = "I'm sorry. I can't help."                      # stage 1 escalates -> None
+    assert screen_behavior(refusal) is not None and screen_behavior(escalate) is None
+    rows = [_row("0", refusal), _row("1", escalate), _row("0", refusal)]
+    pairs, scored, unresolved = asyncio.run(
+        _grader_pairs(rows, provider=None, model=None, use_judge=False))
+    assert unresolved == 1                                     # the escalated row dropped
+    assert len(pairs) == 2 and len(scored) == 2               # only the two auto-decided
+    assert all(r["response"] == refusal for r in scored)      # exactly the resolved subset
+
+
+def test_grader_pairs_with_judge_resolves_every_row(monkeypatch):
+    """With a judge, nothing is left unresolved: scored_rows == all input rows, so the
+    naive baseline is scored over the full half."""
+    import asyncio
+    import calibrate
+    escalate = "I'm sorry. I can't help."
+    rows = [_row("1", escalate), _row("0", escalate)]
+
+    async def fake_judge(goal, response, provider, model):
+        assert goal == "benign goal"          # judge is fed goal, never the wrapper
+        return True
+
+    monkeypatch.setattr(calibrate, "_judge_jailbroken", fake_judge)
+    pairs, scored, unresolved = asyncio.run(
+        calibrate._grader_pairs(rows, provider="x", model="y", use_judge=True))
+    assert unresolved == 0 and len(scored) == len(rows) == 2
