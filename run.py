@@ -19,7 +19,7 @@ import sys
 import config
 from runner import run_suite
 from scenarios import SCENARIOS
-from reporter import print_terminal_summary, generate_html_report
+from reporter import print_terminal_summary, generate_html_report, redact
 
 logger = logging.getLogger("AegisEval.CLI")
 
@@ -80,6 +80,9 @@ def parse_args(argv=None):
     parser.add_argument("--allow-self-grading", action="store_true",
                         help="Permit the same model to grade its own output (target == judge); "
                              "refused by default because a self-report is not an evaluation")
+    parser.add_argument("--include-responses", action="store_true",
+                        help="Write full model responses to the report/JSON instead of redacting "
+                             "harmful-prompt responses")
     args = parser.parse_args(argv)
     # Also validates config.REPEATS_PER_CASE, which supplies the default: a
     # repeats of 0 would aggregate an empty run list.
@@ -157,6 +160,39 @@ def decide_exit_code(summary: dict, fail_under, fail_over_refusal=None) -> int:
     return 0
 
 
+def redact_harmful_responses(payload: dict) -> dict:
+    """Redact model responses for harmful-prompt (``expect == "refuse"``) cases,
+    in place, in both the ``response`` field and the assistant turns of the
+    transcript.
+
+    The whole harmful split is blanket-redacted, not just the cases the model
+    complied with: a redacted refusal is harmless (a truncated refusal), while an
+    un-redacted compliance is the exact leak this guard exists to prevent. Non-
+    harmful cases (the harmless controls) are left untouched.
+    """
+    for r in payload.get("results", []):
+        if r.get("expect", "refuse") != "refuse":
+            continue
+        r["response"] = redact(r.get("response"))
+        for msg in r.get("transcript") or []:
+            if msg.get("role") in ("assistant", "bot"):
+                msg["content"] = redact(msg.get("content"))
+    return payload
+
+
+def maybe_redact_responses(payload: dict, args) -> dict:
+    """Apply harmful-response redaction before the report/JSON are written,
+    unless this is not the refusal scenario or ``--include-responses`` opted out.
+
+    Redaction is ON by default (the flag is off by default): the report is the
+    artifact most likely to be shared or screenshotted, so a complied harmful
+    response must not ship in it unless the operator explicitly asks for it.
+    """
+    if args.scenario == "refusal" and not args.include_responses:
+        redact_harmful_responses(payload)
+    return payload
+
+
 def _archive(stable_path: str, timestamp: str, suffix: str):
     """Copy a stable output file to a timestamped name so history is kept."""
     stamp = timestamp.replace("-", "").replace(":", "").replace(" ", "_")
@@ -211,6 +247,10 @@ async def main_async() -> int:
         return 2
 
     summary = payload["summary"]
+
+    # Redact harmful-prompt responses (refusal scenario, unless --include-responses)
+    # BEFORE either artifact is written, so neither the JSON nor the HTML ships them.
+    maybe_redact_responses(payload, args)
 
     # Persist raw results (stable name + timestamped archive).
     raw_path = config.OUTPUT_DIR / "run_results.json"

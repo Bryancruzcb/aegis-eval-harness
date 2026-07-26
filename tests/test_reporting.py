@@ -1,6 +1,7 @@
 """Tests for summary math and HTML report escaping."""
 from runner import build_summary
-from reporter import generate_html_report, print_terminal_summary
+from reporter import generate_html_report, print_terminal_summary, redact
+from run import parse_args, maybe_redact_responses
 
 
 # --- Summary construction ---
@@ -205,6 +206,66 @@ def test_terminal_summary_survives_absent_rate_keys(capsys):
     print_terminal_summary(payload)  # legacy summary: must not KeyError
     out = capsys.readouterr().out
     assert "Overall Break Rate" not in out and "Grader FP Rate" not in out
+
+
+# --- Task 8: redaction helper + paired, per-scenario rate cards --------------
+
+def test_redact_truncates_and_hashes():
+    out = redact("x" * 500)
+    assert len(out) < 300 and "sha256:" in out
+
+
+def test_refusal_report_suppresses_the_averaged_pass_rate():
+    p = _payload(expect="refuse")
+    p["summary"].update({"scenario": "refusal", "attack_pass_rate": 90.0,
+                         "control_fail_rate": 0.2, "control_total": 10})
+    html = open(generate_html_report(p, file_name="test_refusal_rates.html"),
+                encoding="utf-8").read()
+    assert "Attack Pass Rate" in html and "Over-refusal" in html
+    assert "Pass Rate</div>" not in html      # the averaged hero card is gone
+
+
+def test_secret_guardian_report_keeps_the_pass_rate_card():
+    p = _payload()
+    p["summary"]["scenario"] = "secret-guardian"
+    html = open(generate_html_report(p, file_name="test_sg_rates.html"),
+                encoding="utf-8").read()
+    assert "Pass Rate" in html
+
+
+# --- Task 8: redaction is applied to the WRITTEN payload, gated on the flag ---
+
+# A long "complied" harmful answer: the exact thing that must not ship verbatim.
+_COMPLIED = "Sure, here are the steps: " + "d" * 300
+
+
+def _harmful_result(response):
+    return {"id": "H1", "category": "safety", "prompt": "harmful ask", "expect": "refuse",
+            "response": response,
+            "transcript": [{"role": "user", "content": "harmful ask"},
+                           {"role": "assistant", "content": response}],
+            "status": "fail", "score": 0.0, "reasoning": "complied", "passed": False,
+            "eval_type": "llm_judge", "latency_seconds": 0.1}
+
+
+def test_refusal_redacts_complied_harmful_response_when_flag_off():
+    payload = {"results": [_harmful_result(_COMPLIED)], "summary": {"scenario": "refusal"}}
+    maybe_redact_responses(payload, parse_args(["--scenario", "refusal"]))
+    r = payload["results"][0]
+    assert r["response"] != _COMPLIED
+    assert "[redacted, sha256:" in r["response"]
+    # the assistant turn inside the transcript is redacted too
+    assert "[redacted, sha256:" in r["transcript"][1]["content"]
+    # the user turn is left alone
+    assert r["transcript"][0]["content"] == "harmful ask"
+
+
+def test_include_responses_leaves_complied_harmful_response_intact():
+    payload = {"results": [_harmful_result(_COMPLIED)], "summary": {"scenario": "refusal"}}
+    maybe_redact_responses(payload, parse_args(["--scenario", "refusal", "--include-responses"]))
+    r = payload["results"][0]
+    assert r["response"] == _COMPLIED
+    assert r["transcript"][1]["content"] == _COMPLIED
 
 
 def test_existing_escaping_payload_without_new_keys_still_renders():

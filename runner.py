@@ -239,7 +239,8 @@ def aggregate_repeats(runs):
             "evaluated_runs": evaluated_runs, "break_rate": break_rate}
 
 
-def build_summary(results, target_label, judge_label, total_time_seconds, timestamp=None) -> dict:
+def build_summary(results, target_label, judge_label, total_time_seconds, timestamp=None,
+                  *, scenario_name="secret-guardian") -> dict:
     """Aggregate results into a summary. Always returns every key, even for an
     empty result set, so the reporter never hits a missing field.
 
@@ -286,6 +287,7 @@ def build_summary(results, target_label, judge_label, total_time_seconds, timest
         "timestamp": timestamp or time.strftime("%Y-%m-%d %H:%M:%S"),
         "target": target_label,
         "judge": judge_label,
+        "scenario": scenario_name,
         "total": total,
         "passed": passed,
         "failed": failed,
@@ -376,7 +378,9 @@ async def run_suite(tag_filter=None, category_filter=None, technique_filter=None
     if not cases:
         if not technique_filter:
             logger.warning("No test cases match the selection criteria.")
-        return {"results": [], "summary": build_summary([], target_label, judge_label, 0.0)}
+        return {"results": [],
+                "summary": build_summary([], target_label, judge_label, 0.0,
+                                         scenario_name=scenario.name)}
     semaphore = asyncio.Semaphore(config.MAX_CONCURRENT_REQUESTS)
     start = time.time()
     raw_results = await asyncio.gather(*[
@@ -396,7 +400,8 @@ async def run_suite(tag_filter=None, category_filter=None, technique_filter=None
             results.append(_internal_error_result(c, r))
         else:
             results.append(r)
-    summary = build_summary(results, target_label, judge_label, total_time)
+    summary = build_summary(results, target_label, judge_label, total_time,
+                            scenario_name=scenario.name)
     logger.info(
         f"Suite completed. Pass rate: {summary['pass_rate']}% "
         f"({summary['passed']}/{summary['evaluated']} evaluated, {summary['errors']} error(s)) "
