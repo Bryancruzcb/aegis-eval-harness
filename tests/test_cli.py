@@ -135,3 +135,22 @@ def test_under_performing_and_over_refusing_both_fail_returns_one():
          "attack_total": 20, "attack_evaluated": 20, "attack_pass_rate": 50.0,
          "control_total": 20, "control_fail_rate": 1.0}
     assert decide_exit_code(s, 80, fail_over_refusal=50.0) == 1
+
+
+def test_adaptive_flags_parse():
+    ns = parse_args(["--attacker", "adaptive", "--adaptive-cases", "5",
+                     "--max-turns", "4", "--attacker-temp", "0.9"])
+    assert ns.attacker == "adaptive" and ns.adaptive_cases == 5
+    assert ns.max_turns == 4 and ns.attacker_temp == 0.9
+
+
+def test_adaptive_requires_secret_guardian():
+    with pytest.raises(SystemExit):
+        parse_args(["--attacker", "adaptive", "--scenario", "refusal"])
+
+
+def test_max_turns_below_one_is_rejected():
+    # max_turns of 0 would leave _run_adaptive's loop empty and crash on the
+    # unbound `screen`; reject it at parse time like --repeats < 1.
+    with pytest.raises(SystemExit):
+        parse_args(["--max-turns", "0"])

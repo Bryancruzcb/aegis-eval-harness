@@ -337,12 +337,16 @@ def aggregate_repeats(runs):
 
 
 def build_summary(results, target_label, judge_label, total_time_seconds, timestamp=None,
-                  *, scenario_name="secret-guardian") -> dict:
+                  *, scenario_name="secret-guardian", attacker_mode="scripted") -> dict:
     """Aggregate results into a summary. Always returns every key, even for an
     empty result set, so the reporter never hits a missing field.
 
     Pass rate is computed over *evaluated* cases (pass + fail); errors are
     counted and reported but excluded from the rate.
+
+    ``attacker_mode`` (``"scripted"``/``"adaptive"``) is a keyword-only stamp so
+    the reporter can tell an adaptive run from a scripted one; it defaults to
+    ``"scripted"``, so existing positional callers are unaffected.
     """
     total = len(results)
     passed = sum(1 for r in results if r.get("status") == "pass")
@@ -411,6 +415,7 @@ def build_summary(results, target_label, judge_label, total_time_seconds, timest
         "control_fail_rate": control_fail_rate,
         "turns_to_break": turns_to_break,
         "winning_tactic_counts": winning_tactic_counts,
+        "attacker_mode": attacker_mode,
     }
 
 
@@ -450,7 +455,7 @@ async def run_suite(tag_filter=None, category_filter=None, technique_filter=None
                     target_provider=None, target_model=None, judge_provider=None,
                     judge_model=None, target_temperature=None, query_fn=None, judge_fn=None,
                     *, scenario=SECRET_GUARDIAN, load_kwargs=None,
-                    attacker=None, max_turns=6):
+                    attacker=None, max_turns=6, adaptive_cases=20):
     """Load, filter, and run all test cases; return results plus a summary.
 
     The scenario supplies both the cases and the grading, so a different
@@ -463,28 +468,40 @@ async def run_suite(tag_filter=None, category_filter=None, technique_filter=None
     that raises, or that returns malformed cases missing ``technique``/
     ``category``, degrades to the ``{"error": ...}`` payload rather than crashing
     the suite with a traceback.
+
+    When ``attacker`` is supplied the case source is swapped for ``adaptive_cases``
+    promptless shells (``build_adaptive_cases``) and the scripted loader and its
+    tag/technique/category filters are skipped — those filters key off scripted-
+    case metadata the generated shells do not carry. Every scripted run
+    (``attacker is None``) takes the original loader path unchanged, including its
+    degrade-to-``{"error": ...}`` behaviour.
     """
-    try:
-        cases = scenario.load_cases(**(load_kwargs or {}))
-        # Taken from the data as loaded, so the --technique warning below still lists
-        # something useful when --tag/--category already emptied the selection.
-        available_techniques = sorted({c["technique"] for c in cases})
-        if category_filter:
-            cases = [c for c in cases if c["category"] == category_filter]
-        if tag_filter:
-            cases = [c for c in cases if tag_filter in c.get("tags", [])]
-        if technique_filter:
-            cases = [c for c in cases if c["technique"] == technique_filter]
-            if not cases:
-                # spec 4.8: warn with the valid techniques, then proceed empty.
-                logger.warning(
-                    f"--technique '{technique_filter}' matched no test cases. "
-                    f"Valid techniques in the selected data: {', '.join(available_techniques)}. "
-                    "Proceeding with an empty selection."
-                )
-    except Exception as e:
-        logger.error(f"Failed to load cases for scenario '{scenario.name}': {e}")
-        return {"error": str(e)}
+    attacker_mode = "adaptive" if attacker is not None else "scripted"
+    if attacker is not None:
+        from attackers import build_adaptive_cases
+        cases = build_adaptive_cases(adaptive_cases)
+    else:
+        try:
+            cases = scenario.load_cases(**(load_kwargs or {}))
+            # Taken from the data as loaded, so the --technique warning below still lists
+            # something useful when --tag/--category already emptied the selection.
+            available_techniques = sorted({c["technique"] for c in cases})
+            if category_filter:
+                cases = [c for c in cases if c["category"] == category_filter]
+            if tag_filter:
+                cases = [c for c in cases if tag_filter in c.get("tags", [])]
+            if technique_filter:
+                cases = [c for c in cases if c["technique"] == technique_filter]
+                if not cases:
+                    # spec 4.8: warn with the valid techniques, then proceed empty.
+                    logger.warning(
+                        f"--technique '{technique_filter}' matched no test cases. "
+                        f"Valid techniques in the selected data: {', '.join(available_techniques)}. "
+                        "Proceeding with an empty selection."
+                    )
+        except Exception as e:
+            logger.error(f"Failed to load cases for scenario '{scenario.name}': {e}")
+            return {"error": str(e)}
     logger.info(f"Selected {len(cases)} test case(s).")
     target_label = f"{target_provider or config.DEFAULT_TARGET_PROVIDER}:{target_model or config.DEFAULT_TARGET_MODEL}"
     judge_label = f"{judge_provider or config.DEFAULT_JUDGE_PROVIDER}:{judge_model or config.DEFAULT_JUDGE_MODEL}"
@@ -493,7 +510,8 @@ async def run_suite(tag_filter=None, category_filter=None, technique_filter=None
             logger.warning("No test cases match the selection criteria.")
         return {"results": [],
                 "summary": build_summary([], target_label, judge_label, 0.0,
-                                         scenario_name=scenario.name)}
+                                         scenario_name=scenario.name,
+                                         attacker_mode=attacker_mode)}
     semaphore = asyncio.Semaphore(config.MAX_CONCURRENT_REQUESTS)
     start = time.time()
     raw_results = await asyncio.gather(*[
@@ -515,7 +533,7 @@ async def run_suite(tag_filter=None, category_filter=None, technique_filter=None
         else:
             results.append(r)
     summary = build_summary(results, target_label, judge_label, total_time,
-                            scenario_name=scenario.name)
+                            scenario_name=scenario.name, attacker_mode=attacker_mode)
     logger.info(
         f"Suite completed. Pass rate: {summary['pass_rate']}% "
         f"({summary['passed']}/{summary['evaluated']} evaluated, {summary['errors']} error(s)) "

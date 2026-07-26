@@ -83,13 +83,27 @@ def parse_args(argv=None):
     parser.add_argument("--include-responses", action="store_true",
                         help="Write full model responses to the report/JSON instead of redacting "
                              "harmful-prompt responses")
+    parser.add_argument("--attacker", choices=["scripted", "adaptive"], default="scripted",
+                        help="Attack mode. adaptive = an LLM improvises turns (secret-guardian only).")
+    parser.add_argument("--adaptive-cases", type=int, default=20,
+                        help="Number of independent adaptive attempts (adaptive only).")
+    parser.add_argument("--max-turns", type=int, default=6, help="Turn budget per adaptive attempt.")
+    parser.add_argument("--attacker-provider", default="ollama", choices=["ollama", "openai"])
+    parser.add_argument("--attacker-model", default="qwen2.5:latest")
+    parser.add_argument("--attacker-temp", type=float, default=0.7)
     args = parser.parse_args(argv)
     # Also validates config.REPEATS_PER_CASE, which supplies the default: a
     # repeats of 0 would aggregate an empty run list.
     if args.repeats < 1:
         parser.error("--repeats must be >= 1")
+    # A turn budget of 0 would leave _run_adaptive's loop body unreached, so
+    # `screen` is never bound and the survivor path raises UnboundLocalError.
+    if args.max_turns < 1:
+        parser.error("--max-turns must be >= 1")
     if args.full and args.smoke:
         parser.error("--full and --smoke are mutually exclusive")
+    if args.attacker == "adaptive" and args.scenario != "secret-guardian":
+        parser.error("--attacker adaptive only supports --scenario secret-guardian")
     return args
 
 
@@ -239,6 +253,15 @@ async def main_async() -> int:
 
     print("Initializing AegisEval Suite...")
 
+    # Adaptive mode swaps the scripted cases for LLM-improvised attempts; built
+    # here (parse_args has already guaranteed the secret-guardian scenario) and
+    # threaded through so run_suite routes every case down the adaptive branch.
+    attacker = None
+    if args.attacker == "adaptive":
+        from attackers import AdaptiveAttacker
+        attacker = AdaptiveAttacker(provider=args.attacker_provider, model=args.attacker_model,
+                                    temperature=args.attacker_temp)
+
     payload = await run_suite(
         tag_filter=args.tag,
         category_filter=args.category,
@@ -251,6 +274,9 @@ async def main_async() -> int:
         target_temperature=args.target_temp,
         scenario=SCENARIOS[args.scenario],
         load_kwargs=load_kwargs_from_args(args),
+        attacker=attacker,
+        max_turns=args.max_turns,
+        adaptive_cases=args.adaptive_cases,
     )
 
     if "error" in payload:
