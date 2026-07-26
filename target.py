@@ -60,12 +60,18 @@ def build_gemini_contents(messages):
     ]
 
 
-async def query_target_conversation(messages, provider=None, model=None, temperature=None) -> str:
-    """Query the target LLM with the guardian system prompt and a conversation.
+async def query_target_conversation(messages, provider=None, model=None, temperature=None,
+                                    *, system_prompt=SYSTEM_INSTRUCTION) -> str:
+    """Query the target LLM with a system prompt and a conversation.
 
     ``messages`` is a list of ``{"role": "user"|"assistant", "content": str}``
     turns. Returns the model's text. Raises ``ProviderError`` if the call cannot
     be completed.
+
+    ``system_prompt`` is keyword-only on purpose: existing callers forward
+    ``provider``/``model``/``temperature`` positionally, and a positional
+    parameter here would silently bind to the wrong argument. ``None`` means
+    send the model no system prompt at all.
     """
     provider = (provider or config.DEFAULT_TARGET_PROVIDER).lower()
     model = model or config.DEFAULT_TARGET_MODEL
@@ -83,7 +89,7 @@ async def query_target_conversation(messages, provider=None, model=None, tempera
                 model,
                 contents,
                 types.GenerateContentConfig(
-                    system_instruction=SYSTEM_INSTRUCTION,
+                    system_instruction=system_prompt,
                     temperature=temperature,
                 ),
             )
@@ -94,7 +100,8 @@ async def query_target_conversation(messages, provider=None, model=None, tempera
 
         elif provider in ("openai", "ollama"):
             client = get_openai_client() if provider == "openai" else get_ollama_client()
-            oai_messages = build_openai_messages(SYSTEM_INSTRUCTION, messages)
+            oai_messages = (build_openai_messages(system_prompt, messages)
+                            if system_prompt is not None else list(messages))
             response = await _openai_chat(client, model, oai_messages, temperature)
             content = response.choices[0].message.content
             if content is None:
@@ -112,10 +119,11 @@ async def query_target_conversation(messages, provider=None, model=None, tempera
 
 
 async def query_target(prompt: str, provider: str = None, model: str = None,
-                       temperature: float = None) -> str:
+                       temperature: float = None, *, system_prompt=SYSTEM_INSTRUCTION) -> str:
     """Single-prompt convenience wrapper over ``query_target_conversation``."""
     return await query_target_conversation(
-        [{"role": "user", "content": prompt}], provider, model, temperature
+        [{"role": "user", "content": prompt}], provider=provider, model=model,
+        temperature=temperature, system_prompt=system_prompt
     )
 
 

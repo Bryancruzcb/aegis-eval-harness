@@ -1,7 +1,10 @@
 """Coordinates async execution of the test suite.
 
-Each case runs: target query -> deterministic check -> (if clean) LLM judge.
-Every result carries a ``status`` of ``pass``, ``fail``, or ``error``:
+Each case runs: target query -> the scenario grader's cheap screen -> (if the
+screen is undecided) the LLM judge. Every grading decision belongs to the
+scenario's ``Grader``; the runner only sequences turns, handles provider
+failures, and shapes the result. Every result carries a ``status`` of ``pass``,
+``fail``, or ``error``:
 
   * pass / fail  -> the model produced an answer and it was graded
   * error        -> the answer could not be obtained or graded (429, timeout,
@@ -9,19 +12,14 @@ Every result carries a ``status`` of ``pass``, ``fail``, or ``error``:
                     separately and excluded from the pass rate, so an outage
                     never masquerades as a safety failure.
 """
-import json
 import asyncio
 import time
 import logging
 
 from target import query_target_conversation
-from evaluators import (
-    run_deterministic_eval,
-    run_llm_judge_eval_conversation,
-    JudgeParseError,
-    _alphanumeric,
-)
+from evaluators import run_llm_judge_eval_conversation, JudgeParseError
 from providers import ProviderError
+from scenarios import SECRET_GUARDIAN
 import config
 
 logger = logging.getLogger("AegisEval.Runner")
@@ -69,6 +67,12 @@ def _base_fields(test_case):
 
     Used by both the normal path and the unexpected-exception fallback so an
     internally-errored result has the same shape as its siblings.
+
+    This is a whitelist: a key a case carries but this function does not name is
+    dropped from the result. Scenario-specific metadata therefore rides in the
+    case's optional ``extra`` dict, which is copied through verbatim (empty dict
+    when absent). It is nested rather than flattened on purpose — flattening
+    unknown keys would let a case silently overwrite a result field.
     """
     turns = test_case.get("turns") or [test_case.get("prompt", "")]
     return {
@@ -77,7 +81,20 @@ def _base_fields(test_case):
         "expected_criteria": test_case.get("expected_criteria"),
         "description": test_case.get("description", ""), "tags": test_case.get("tags", []),
         "expect": test_case.get("expect", "refuse"),
+        "technique": test_case.get("technique", "unspecified"),
+        "extra": test_case.get("extra", {}),
     }
+
+
+def _eval_type(judged):
+    """How the case was decided. The runner owns this, not the Verdict.
+
+    ``"deterministic"`` when the grader's screen settled it without the judge,
+    ``"llm_judge"`` when the judge did. Keep these exact strings:
+    ``aggregate_repeats`` tie-breaks on ``"deterministic"``, so a new value would
+    silently degrade ``--repeats``.
+    """
+    return "deterministic" if judged is None else "llm_judge"
 
 
 def _log_done(tc_id, status, score=None):
@@ -94,27 +111,35 @@ def _internal_error_result(test_case, exc):
                    transcript=[])
 
 
-async def run_single_test(test_case, semaphore, *, query_fn=None, judge_fn=None,
+async def run_single_test(test_case, semaphore, *, scenario=SECRET_GUARDIAN,
+                          query_fn=None, judge_fn=None,
                           target_provider=None, target_model=None,
                           judge_provider=None, judge_model=None, target_temperature=None):
+    """Run one case end to end and return a result dict.
+
+    Sequencing, provider-failure handling, and the result shape live here; every
+    grading decision belongs to ``scenario.grader``. Mid-loop only a ``"fail"``
+    screen is actionable — ``"pass"``/``"judge"`` mean "keep going" until the
+    final turn — so the loop's exit screen is the one that decides the case.
+    """
     query_fn = query_fn or query_target_conversation
     judge_fn = judge_fn or run_llm_judge_eval_conversation
-    expect = test_case.get("expect", "refuse")
+    grader = scenario.grader
     turns = test_case.get("turns") or [test_case["prompt"]]
     base = _base_fields(test_case)
     tc_id = base["id"]
-    secret_norm = _alphanumeric(config.SYSTEM_SECRET)
     async with semaphore:
         logger.info(f"Starting {tc_id} ({base['category']})")
         transcript, running_bot, attacker_text = [], "", ""
         start = time.time()
-        for user_msg in turns:
+        for i, user_msg in enumerate(turns):
+            is_final = (i == len(turns) - 1)
             transcript.append({"role": "user", "content": user_msg})
             attacker_text += "\n" + user_msg
-            secret_supplied = secret_norm in _alphanumeric(attacker_text)
             try:
                 reply = await query_fn(transcript, provider=target_provider,
-                                       model=target_model, temperature=target_temperature)
+                                       model=target_model, temperature=target_temperature,
+                                       system_prompt=scenario.system_prompt)
             except ProviderError as e:
                 latency = round(time.time() - start, 2)
                 logger.warning(f"{tc_id}: target error: {e}")
@@ -124,39 +149,45 @@ async def run_single_test(test_case, semaphore, *, query_fn=None, judge_fn=None,
                                transcript=transcript)
             transcript.append({"role": "assistant", "content": reply})
             running_bot += "\n" + reply
-            det = run_deterministic_eval(running_bot)
-            secret_hit = det["secret_leak"] and not secret_supplied
-            if secret_hit or det["profanity"]:
+            # Running concatenations, not just this turn: a leak in turn 1 still
+            # counts in turn 3, and a secret the attacker supplied earlier must
+            # not be scored as a leak when the bot repeats it back later.
+            screen = grader.screen(test_case, running_bot, attacker_text, is_final=is_final)
+            if screen.decision == "fail":
                 latency = round(time.time() - start, 2)
-                # Benign fail label: secret-collision => grader FP (True); profanity => genuine (False).
-                fp = (not det["profanity"]) if expect == "benign" else None
-                _log_done(tc_id, "fail (deterministic)", 0.0)
-                return _result(base, response=reply, score=0.0, reasoning=det["reasoning"],
-                               passed=False, status="fail", eval_type="deterministic",
-                               latency=latency, transcript=transcript, false_positive=fp)
+                v = grader.verdict(test_case, screen, None)
+                _log_done(tc_id, "fail (deterministic)", v.score)
+                return _result(base, response=transcript[-1]["content"], score=v.score,
+                               reasoning=v.reasoning, passed=False, status="fail",
+                               eval_type=_eval_type(None), latency=latency,
+                               transcript=transcript, false_positive=v.false_positive)
         latency = round(time.time() - start, 2)
-        if expect == "benign":
-            _log_done(tc_id, "pass (benign, deterministic-only)", 1.0)
-            return _result(base, response=transcript[-1]["content"], score=1.0,
-                           reasoning="Benign case: deterministic checks clean.", passed=True,
-                           status="pass", eval_type="deterministic", latency=latency,
-                           transcript=transcript, false_positive=False)
+        if screen.decision == "pass":
+            v = grader.verdict(test_case, screen, None)
+            _log_done(tc_id, "pass (deterministic-only)", v.score)
+            return _result(base, response=transcript[-1]["content"], score=v.score,
+                           reasoning=v.reasoning, passed=True, status="pass",
+                           eval_type=_eval_type(None), latency=latency, transcript=transcript,
+                           false_positive=v.false_positive)
         logger.info(f"Deterministic checks passed for {tc_id}. Invoking LLM Judge...")
         try:
             judged = await judge_fn(transcript, base["expected_criteria"],
-                                    provider=judge_provider, model=judge_model)
+                                    provider=judge_provider, model=judge_model,
+                                    system_instruction=grader.judge_system_prompt(test_case))
         except (ProviderError, JudgeParseError) as e:
+            # Return before asking for a verdict: with no judge answer there is
+            # nothing to grade, and ``verdict`` requires a non-None ``judged``
+            # for a "judge" screen.
             logger.warning(f"{tc_id}: judge error: {e}")
             _log_done(tc_id, "error")
             return _result(base, response=transcript[-1]["content"], score=None, reasoning=str(e),
                            passed=False, status="error", eval_type="judge_error",
                            latency=latency, transcript=transcript)
-        passed = bool(judged["passed"])
-        _log_done(tc_id, "pass" if passed else "fail", judged["score"])
-        return _result(base, response=transcript[-1]["content"], score=judged["score"],
-                       reasoning=judged["reasoning"], passed=passed,
-                       status="pass" if passed else "fail", eval_type="llm_judge",
-                       latency=latency, transcript=transcript)
+        v = grader.verdict(test_case, screen, judged)
+        _log_done(tc_id, v.status, v.score)
+        return _result(base, response=transcript[-1]["content"], score=v.score,
+                       reasoning=v.reasoning, passed=(v.status == "pass"), status=v.status,
+                       eval_type=_eval_type(judged), latency=latency, transcript=transcript)
 
 
 def aggregate_repeats(runs):
@@ -254,6 +285,7 @@ def build_summary(results, target_label, judge_label, total_time_seconds, timest
 
 
 async def run_case_repeated(test_case, semaphore, *, repeats, query_fn, judge_fn,
+                            scenario=SECRET_GUARDIAN,
                             target_provider=None, target_model=None, judge_provider=None,
                             judge_model=None, target_temperature=None):
     """Run one case ``repeats`` times and collapse with take-worst aggregation.
@@ -261,7 +293,8 @@ async def run_case_repeated(test_case, semaphore, *, repeats, query_fn, judge_fn
     A ``None`` ``query_fn``/``judge_fn`` is forwarded straight into
     ``run_single_test``, whose own defaults then bind the real target/judge.
     """
-    tasks = [run_single_test(test_case, semaphore, query_fn=query_fn, judge_fn=judge_fn,
+    tasks = [run_single_test(test_case, semaphore, scenario=scenario,
+                             query_fn=query_fn, judge_fn=judge_fn,
                              target_provider=target_provider, target_model=target_model,
                              judge_provider=judge_provider, judge_model=judge_model,
                              target_temperature=target_temperature)
@@ -281,14 +314,18 @@ async def run_case_repeated(test_case, semaphore, *, repeats, query_fn, judge_fn
 
 async def run_suite(tag_filter=None, category_filter=None, technique_filter=None, repeats=1,
                     target_provider=None, target_model=None, judge_provider=None,
-                    judge_model=None, target_temperature=None, query_fn=None, judge_fn=None):
-    """Load, filter, and run all test cases; return results plus a summary."""
+                    judge_model=None, target_temperature=None, query_fn=None, judge_fn=None,
+                    *, scenario=SECRET_GUARDIAN):
+    """Load, filter, and run all test cases; return results plus a summary.
+
+    The scenario supplies both the cases and the grading, so a different
+    scenario changes what runs and how it is scored without touching this
+    function.
+    """
     try:
-        with open(config.BASE_DIR / "test_cases.json", "r", encoding="utf-8") as f:
-            raw = json.load(f)
-        cases = load_test_cases(raw)
+        cases = scenario.load_cases()
     except Exception as e:
-        logger.error(f"Failed to load test_cases.json: {e}")
+        logger.error(f"Failed to load cases for scenario '{scenario.name}': {e}")
         return {"error": str(e)}
     # Taken from the data as loaded, so the --technique warning below still lists
     # something useful when --tag/--category already emptied the selection.
@@ -317,6 +354,7 @@ async def run_suite(tag_filter=None, category_filter=None, technique_filter=None
     start = time.time()
     raw_results = await asyncio.gather(*[
         run_case_repeated(c, semaphore, repeats=repeats, query_fn=query_fn, judge_fn=judge_fn,
+                          scenario=scenario,
                           target_provider=target_provider, target_model=target_model,
                           judge_provider=judge_provider, judge_model=judge_model,
                           target_temperature=target_temperature)
