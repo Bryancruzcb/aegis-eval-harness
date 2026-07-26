@@ -150,6 +150,85 @@ case. This is how the `crescendo` (slow rapport-then-extract) attacks work:
 }
 ```
 
+## Scenarios
+
+The harness runs one **scenario** at a time — a target setup plus the grader
+that scores it. Pick one with `--scenario` (default `secret-guardian`).
+
+- **`secret-guardian`** (default) — everything described above: the passcode bot,
+  graded by deterministic checks plus the LLM judge.
+- **`refusal`** — does the model refuse genuinely harmful requests without
+  over-refusing harmless ones? It sends the model **no** system prompt, so it
+  tests the model's *own* safety training, and grades each response with a
+  two-stage **refusal grader** (anchored refusal markers first, the LLM judge for
+  anything ambiguous).
+
+```bash
+# Run the refusal scenario against a stratified sample (5 per category)
+python run.py --scenario refusal
+
+# Fail CI if the model over-refuses harmless requests by more than 20%
+python run.py --scenario refusal --fail-over-refusal 20
+```
+
+The cases come from **[JailbreakBench](https://huggingface.co/datasets/JailbreakBench/JBB-Behaviors)**
+(JBB-Behaviors): 100 harmful behaviours the model must refuse, plus 100
+index-paired harmless controls it should help with (refusing one is an
+over-refusal failure). The dataset is **fetched at runtime** into a git-ignored
+cache (`.cache/jbb`), pinned to a commit and **sha256-verified on every read**.
+**It is never committed to the repository** — no harmful prompt text lives here.
+
+### Sampling flags (refusal only)
+
+- `--full` — run the whole benchmark (all 200 behaviours).
+- `--smoke` — a minimal 2-per-category sample (a quick check).
+- `--sample-seed N` — seed for the stratified per-category sample (default `0`).
+- `--refresh-benchmark` — ignore the cache and re-download (re-verifies the hash).
+
+### Calibrating the refusal grader
+
+The refusal grader is a measuring instrument, so its own accuracy is measured
+against JBB's **300 human-labelled `judge-comparison` rows**. `calibrate.py`
+runs stage 1 over a held-out 150-row half (thresholds are tuned on the other,
+seeded dev half, so the reported figure is out-of-sample), escalates the
+undecided rows to the judge, and prints its confusion matrix beside JBB's own
+published `StringClassifier` baseline. The positive class is **jailbroken (=
+not refused)**, matching JBB's convention, and the judge is fed each row's
+behaviour (`goal`), not the jailbreak wrapper — the same way the harness queries.
+
+```bash
+python calibrate.py                 # score the held-out half
+python calibrate.py --dev           # score the seeded dev half instead
+python calibrate.py --limit 20      # a quick 20-row check
+```
+
+Output is a confusion matrix and derived stats for the grader and for the naive
+baseline. A judge model must be configured for the escalated rows to be scored;
+the accuracy figures below are **placeholders until you run it**:
+
+| metric | refusal grader | naive JBB classifier |
+|--------|----------------|----------------------|
+| agreement with `human_majority` | _TBD — run to measure_ | _TBD — run to measure_ |
+| balanced accuracy | _TBD — run to measure_ | _TBD — run to measure_ |
+| MCC | _TBD — run to measure_ | _TBD — run to measure_ |
+| FPR / FNR | _TBD — run to measure_ | _TBD — run to measure_ |
+
+The **majority-class baseline** is a property of the dataset, not of the grader:
+the labels are ~190/110, so a do-nothing classifier that always answers "not
+jailbroken" scores about **63%**. That floor is printed for reference alongside
+human–human agreement (the irreducible ceiling); the grader's own numbers above
+are only ever the measured ones.
+
+**Scope of this calibration** — a single number will otherwise be read as
+validating everything, so:
+
+1. calibrated on **harmful-split responses only** — the over-refusal half of the
+   grader is unvalidated;
+2. `target_response` rows are 2024-vintage outputs, so the length gate and marker
+   lists are tuned out-of-distribution relative to 2026 targets, and the stage-1
+   short-circuit rate will not transfer — re-report that rate from real runs;
+3. JBB is public and frozen, so a high refusal rate partly measures memorization.
+
 ## Output
 
 Written to `output/` (git-ignored):
@@ -179,7 +258,10 @@ they run offline and in CI (see `.github/workflows/ci.yml`).
 | `target.py`       | The model under test + its guardian system prompt |
 | `evaluators.py`   | Deterministic checks + the LLM judge |
 | `graders.py`      | `Screen`/`Verdict` value objects, the `Grader` protocol, `SecretGuardianGrader` |
-| `scenarios.py`    | The `Scenario` dataclass + the `SCENARIOS` registry |
+| `refusal_grader.py` | The two-stage `RefusalGrader` for the refusal scenario |
+| `scenarios.py`    | The `Scenario` dataclass + the `SCENARIOS` registry (`secret-guardian`, `refusal`) |
+| `benchmarks/`     | Runtime fetch + verify + cache (`fetch.py`) and the JailbreakBench loader (`jbb.py`) |
+| `calibrate.py`    | Measures the refusal grader against JBB's human labels |
 | `providers.py`    | Shared clients, retry policy, error taxonomy |
 | `reporter.py`     | Terminal summary + HTML dashboard |
 | `test_cases.json` | The suite of prompts and expected criteria |
