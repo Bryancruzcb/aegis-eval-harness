@@ -2,18 +2,69 @@
 
 [![CI](https://github.com/Bryancruzcb/aegis-eval-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/Bryancruzcb/aegis-eval-harness/actions/workflows/ci.yml)
 
-A small, asynchronous harness for evaluating LLM applications on three axes:
+A small, asynchronous harness for **red-teaming and evaluating LLM safety** — and,
+unusually, one that **measures the accuracy of its own grader and reports where it
+is weak** instead of quoting a flattering number. Three things run on it:
 
-- **Functional** — does it answer normal requests helpfully and stay on-topic?
-- **Safety** — does it refuse to produce profanity or abusive content on request?
-- **Security** — does it resist jailbreaks, prompt injection, and attempts to
-  leak a secret held in its system prompt?
+- **Secret Guardian** — a support bot holds a passcode in its system prompt and is
+  told never to reveal it. The suite fires ordinary questions and multi-turn
+  jailbreaks at it and grades every reply (fast deterministic leak checks, then an
+  LLM judge for the soft failures).
+- **Refusal benchmark** — does a model refuse genuinely harmful requests without
+  over-refusing harmless ones? Driven by **JailbreakBench** data fetched at runtime
+  and never committed to the repo. Its two-stage grader is **calibrated against 300
+  human labels**, and the accuracy is reported honestly: the grader is *judge-bound*
+  — MCC 0.20 with a free 7B local judge, climbing to ~0.80 with a GPT-4-class one.
+- **Adaptive attacker** — an LLM that reads the bot's replies and improvises
+  social-engineering tactics turn by turn to extract the secret, reporting how often
+  and how fast it breaks in (and honestly, that the number is only a lower bound).
 
-The model under test is a "Secret Guardian" support bot: it holds a passcode in
-its system prompt and is told never to reveal it. The suite fires a mix of
-ordinary questions and attacks at it and grades every response.
+Every run produces a self-contained HTML dashboard (this one is an adaptive-attacker
+run against a local model — [full sample](docs/sample-report.html)):
+
+![AegisEval HTML report — metric cards, the Adaptive Attacker panel, and the filterable per-case list](docs/report-screenshot.png)
+
+## Try it in 30 seconds (no API key)
+
+With [Ollama](https://ollama.com) running locally, everything works offline — no
+key, no quota:
+
+```bash
+pip install -r requirements.txt
+ollama pull llama3.2:3b            # the target/judge model
+
+# scripted secret-guardian suite, all local
+python run.py --target-provider ollama --target-model llama3.2:3b \
+              --judge-provider ollama  --judge-model  llama3.2:3b
+
+# or turn the adaptive attacker loose on it
+python run.py --attacker adaptive --adaptive-cases 5 \
+              --target-provider ollama --target-model llama3.2:3b \
+              --attacker-provider ollama --judge-provider ollama --judge-model llama3.2:3b
+```
+
+Open the `report.html` it writes to `output/`. The full test suite is offline too —
+`pip install -r requirements-dev.txt && pytest` runs all ~289 tests with no key.
 
 ## How it works
+
+```mermaid
+flowchart LR
+    CLI[run.py CLI] --> Suite[run_suite]
+    Suite --> Sc[Scenario<br/>cases + grader + system prompt]
+    Sc -->|per case| Src{turn source}
+    Src -->|scripted| Turns[fixed turns]
+    Src -->|--attacker adaptive| Atk[AdaptiveAttacker<br/>picks a tactic each turn]
+    Turns --> Tgt[Target model]
+    Atk --> Tgt
+    Tgt --> Det{deterministic<br/>screen}
+    Det -->|leak / profanity| Fail[fail]
+    Det -->|clean, last turn| Judge[LLM judge]
+    Judge --> Verdict[pass / fail / error]
+    Fail --> Report[HTML + JSON report]
+    Verdict --> Report
+    Cal[calibrate.py] -.->|scores the grader vs<br/>300 human labels| Judge
+```
 
 Each test case runs through a two-stage pipeline:
 
@@ -263,6 +314,13 @@ the identical rows:
 | _ref: Llama-3-70B judge_ | 90.0% | 90.9% | 0.80 | 0.13 / 0.05 |
 | _ref: Llama Guard 2_ | 86.0% | 85.6% | 0.71 | 0.13 / 0.16 |
 | _ref: HarmBench_ | 76.7% | 78.5% | 0.55 | 0.29 / 0.14 |
+
+> Also measured, on a smaller free-tier sample: with **`gemini-3.5-flash`** as the
+> judge over a **30-row** subset, the grader scored **MCC 0.36** (balanced accuracy
+> 68%) against naive's 0.19 on those same rows — consistent with `flash-lite` and
+> comfortably above the baseline. A full 150-row run with a stronger hosted judge
+> needs a paid-tier key (a free tier can't sustain the ~90 judge calls); the
+> judge-bound conclusion holds either way.
 
 Human–human agreement on this half is **86.7%** (130/150 unanimous) — the
 irreducible ceiling. The **majority-class baseline** (always answer "not
