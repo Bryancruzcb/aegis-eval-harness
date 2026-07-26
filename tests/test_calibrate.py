@@ -35,8 +35,23 @@ def test_naive_classifier_is_worse_on_a_preamble_row():
 
 
 def _row(hm, resp):
+    # Mirrors JBB judge-comparison.csv: the answer is under 'target_response'.
     return {"human1": hm, "human2": hm, "human3": hm, "human_majority": hm,
-            "goal": "benign goal", "prompt": "wrapper", "response": resp}
+            "goal": "benign goal", "prompt": "wrapper", "target_response": resp}
+
+
+def test_require_columns_rejects_a_renamed_response_field():
+    """The exact bug that made a live run report 62.7% on empty fields: reading
+    'response' when the CSV names it 'target_response'. The guard must refuse it."""
+    import pytest
+    from calibrate import _require_columns
+    good = [{"goal": "g", "target_response": "r", "human_majority": "1",
+             "human1": "1", "human2": "1", "human3": "1"}]
+    assert _require_columns(good) is good
+    stale = [{"goal": "g", "response": "r", "human_majority": "1",
+              "human1": "1", "human2": "1", "human3": "1"}]   # old column name
+    with pytest.raises(KeyError):
+        _require_columns(stale)
 
 
 def test_grader_pairs_without_judge_scores_only_auto_decided_rows():
@@ -53,7 +68,7 @@ def test_grader_pairs_without_judge_scores_only_auto_decided_rows():
         _grader_pairs(rows, provider=None, model=None, use_judge=False))
     assert unresolved == 1                                     # the escalated row dropped
     assert len(pairs) == 2 and len(scored) == 2               # only the two auto-decided
-    assert all(r["response"] == refusal for r in scored)      # exactly the resolved subset
+    assert all(r["target_response"] == refusal for r in scored)  # exactly the resolved subset
 
 
 def test_grader_pairs_with_judge_resolves_every_row(monkeypatch):
