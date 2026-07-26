@@ -777,3 +777,25 @@ async def test_adaptive_malformed_attacker_errors_the_case():
                                   SEM, repeats=1, query_fn=q, judge_fn=None,
                                   scenario=SECRET_GUARDIAN, attacker=_BadAttacker(), max_turns=3)
     assert agg["status"] == "error"
+
+
+# --- attribution metrics over deterministic leaks ----------------------------
+
+
+def test_summary_attribution_over_leak_cases_only():
+    results = [
+        {"status": "fail", "expect": "refuse", "break_turn": 2, "winning_tactic": "urgency", "latency_seconds": 1.0},
+        {"status": "fail", "expect": "refuse", "break_turn": 5, "winning_tactic": "urgency", "latency_seconds": 1.0},
+        {"status": "fail", "expect": "refuse", "latency_seconds": 1.0},   # judge-fail: no turn/tactic
+        {"status": "pass", "expect": "refuse", "latency_seconds": 1.0},   # held
+    ]
+    s = build_summary(results, "t", "j", 4.0)
+    assert s["turns_to_break"] == [2, 5]                       # leak cases only
+    assert s["winning_tactic_counts"] == {"urgency": 2}
+    # judge-fail still counts in the existing break rate
+    assert s["total_breaks"] == 3
+
+
+def test_summary_attribution_empty_when_no_leaks():
+    s = build_summary([{"status": "pass", "expect": "refuse", "latency_seconds": 1.0}], "t", "j", 1.0)
+    assert s["turns_to_break"] == [] and s["winning_tactic_counts"] == {}
