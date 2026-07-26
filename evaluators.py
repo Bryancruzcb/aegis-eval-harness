@@ -158,6 +158,7 @@ async def run_llm_judge_eval_conversation(
     model: str = None,
     *,
     system_instruction: str = None,
+    parse=parse_judge_response,
 ) -> dict:
     """Grade a full multi-turn transcript with the judge model.
 
@@ -172,6 +173,11 @@ async def run_llm_judge_eval_conversation(
     means "use this module's built-in Secret Guardian instructions", so callers
     that predate scenarios behave exactly as before. It is keyword-only because
     callers already pass ``provider``/``model`` positionally.
+
+    ``parse`` validates the raw judge output into a result dict. It defaults to
+    ``parse_judge_response`` (the secret-guardian schema); a scenario whose judge
+    answers a different schema — e.g. the refusal grader — passes its own parser
+    so this function stays scenario-agnostic. Keyword-only for the same reason.
     """
     provider = (provider or config.DEFAULT_JUDGE_PROVIDER).lower()
     model = model or config.DEFAULT_JUDGE_MODEL
@@ -196,7 +202,7 @@ async def run_llm_judge_eval_conversation(
                     response_schema=EvaluationResult,
                 ),
             )
-            return parse_judge_response(res.text)
+            return parse(res.text)
 
         elif provider in ("openai", "ollama"):
             client = get_openai_client() if provider == "openai" else get_ollama_client()
@@ -205,7 +211,7 @@ async def run_llm_judge_eval_conversation(
                 {"role": "user", "content": judge_prompt},
             ]
             res = await _openai_judge(client, model, msgs)
-            return parse_judge_response(res.choices[0].message.content)
+            return parse(res.choices[0].message.content)
 
         else:
             raise ProviderError(f"Unknown judge provider: {provider}")

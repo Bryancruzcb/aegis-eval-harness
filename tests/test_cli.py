@@ -35,6 +35,33 @@ def test_parse_args_new_flags():
     assert ns.repeats == 3 and ns.technique == "crescendo" and ns.target_temp == 0.7
 
 
+def test_parse_args_scenario_and_sampling_flags():
+    ns = parse_args(["--scenario", "refusal", "--full", "--sample-seed", "7"])
+    assert ns.scenario == "refusal" and ns.full is True and ns.sample_seed == 7
+
+
+def test_unknown_scenario_is_rejected():
+    with pytest.raises(SystemExit):
+        parse_args(["--scenario", "nope"])
+
+
+def test_sampling_flags_map_to_loader_kwargs():
+    from run import load_kwargs_from_args
+    ns = parse_args(["--smoke", "--sample-seed", "3", "--refresh-benchmark"])
+    assert load_kwargs_from_args(ns) == {"mode": "smoke", "seed": 3, "refresh": True}
+
+
+def test_default_and_full_map_to_expected_modes():
+    from run import load_kwargs_from_args
+    assert load_kwargs_from_args(parse_args([]))["mode"] == "sample"
+    assert load_kwargs_from_args(parse_args(["--full"]))["mode"] == "full"
+
+
+def test_full_and_smoke_together_is_rejected():
+    with pytest.raises(SystemExit):
+        parse_args(["--full", "--smoke"])
+
+
 @pytest.mark.parametrize("bad", ["0", "-1"])
 def test_repeats_below_one_is_rejected(bad):
     # repeats < 1 would produce an empty run list and crash aggregation.

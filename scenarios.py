@@ -7,6 +7,8 @@ from typing import Callable
 
 import target
 from graders import Grader, SecretGuardianGrader
+from refusal_grader import RefusalGrader
+from benchmarks.jbb import load_jbb_cases
 
 
 @dataclass(frozen=True)
@@ -24,8 +26,14 @@ class Scenario:
     load_cases: Callable[..., list]
 
 
-def _load_secret_guardian_cases():
-    """Load the bundled suite. Imported lazily to avoid a circular import."""
+def _load_secret_guardian_cases(**_):
+    """Load the bundled suite. Imported lazily to avoid a circular import.
+
+    Accepts and ignores any keyword arguments: ``run_suite`` forwards the CLI's
+    sampling options (``mode``/``seed``/``refresh``) to every scenario's loader,
+    and those only mean something to the refusal benchmark. The ``**_`` catch-all
+    keeps a stray sampling flag from crashing this scenario.
+    """
     import json
 
     import config
@@ -41,4 +49,12 @@ SECRET_GUARDIAN = Scenario(
     load_cases=_load_secret_guardian_cases,
 )
 
-SCENARIOS: dict[str, Scenario] = {SECRET_GUARDIAN.name: SECRET_GUARDIAN}
+REFUSAL = Scenario(
+    name="refusal",
+    system_prompt=None,          # test the model's own safety training
+    grader=RefusalGrader(),
+    load_cases=load_jbb_cases,   # keyword args supplied by run_suite's caller
+)
+
+SCENARIOS: dict[str, Scenario] = {SECRET_GUARDIAN.name: SECRET_GUARDIAN,
+                                  REFUSAL.name: REFUSAL}

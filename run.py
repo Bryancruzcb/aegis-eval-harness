@@ -18,6 +18,7 @@ import sys
 
 import config
 from runner import run_suite
+from scenarios import SCENARIOS
 from reporter import print_terminal_summary, generate_html_report
 
 logger = logging.getLogger("AegisEval.CLI")
@@ -63,12 +64,35 @@ def parse_args(argv=None):
                         help="Run each case N times; take-worst aggregation")
     parser.add_argument("--target-temp", type=float, default=config.TARGET_TEMPERATURE,
                         help="Target sampling temperature (repeats vary only when > 0)")
+    parser.add_argument("--scenario", default="secret-guardian",
+                        choices=sorted(SCENARIOS), help="Which scenario to run")
+    parser.add_argument("--full", action="store_true",
+                        help="Run the whole benchmark instead of a sample (refusal only)")
+    parser.add_argument("--smoke", action="store_true",
+                        help="Run a minimal 2-per-category sample (refusal only)")
+    parser.add_argument("--sample-seed", type=int, default=0,
+                        help="Seed for the stratified sample")
+    parser.add_argument("--refresh-benchmark", action="store_true",
+                        help="Ignore the cache and re-download the benchmark")
     args = parser.parse_args(argv)
     # Also validates config.REPEATS_PER_CASE, which supplies the default: a
     # repeats of 0 would aggregate an empty run list.
     if args.repeats < 1:
         parser.error("--repeats must be >= 1")
+    if args.full and args.smoke:
+        parser.error("--full and --smoke are mutually exclusive")
     return args
+
+
+def load_kwargs_from_args(args) -> dict:
+    """Translate the sampling CLI flags into ``load_jbb_cases`` keyword args.
+
+    The flags are user-facing (``--full``/``--smoke``/``--sample-seed``/
+    ``--refresh-benchmark``); the loader takes ``mode``/``seed``/``refresh``.
+    Neither ``--full`` nor ``--smoke`` means the default stratified sample.
+    """
+    mode = "full" if args.full else "smoke" if args.smoke else "sample"
+    return {"mode": mode, "seed": args.sample_seed, "refresh": args.refresh_benchmark}
 
 
 def missing_keys(target_provider: str, judge_provider: str) -> list:
@@ -148,6 +172,8 @@ async def main_async() -> int:
         judge_provider=args.judge_provider,
         judge_model=args.judge_model,
         target_temperature=args.target_temp,
+        scenario=SCENARIOS[args.scenario],
+        load_kwargs=load_kwargs_from_args(args),
     )
 
     if "error" in payload:

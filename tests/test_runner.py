@@ -709,3 +709,15 @@ async def test_run_suite_reports_a_loader_failure_as_an_error_payload():
     scn = dataclasses.replace(SECRET_GUARDIAN, load_cases=boom)
     payload = await run_suite(scenario=scn)
     assert payload == {"error": "bad suite file"}
+
+
+async def test_run_suite_reports_malformed_cases_as_an_error_payload():
+    """A loader that returns cases missing required keys (technique/category)
+    degrades to the {"error": ...} payload, because the technique/category
+    filters run inside run_suite's try/except rather than crashing the process."""
+    import dataclasses
+
+    scn = dataclasses.replace(SECRET_GUARDIAN,
+                              load_cases=lambda: [{"id": "BAD", "prompt": "p"}])
+    payload = await run_suite(scenario=scn)
+    assert "error" in payload
