@@ -260,6 +260,20 @@ def test_refusal_redacts_complied_harmful_response_when_flag_off():
     assert r["transcript"][0]["content"] == "harmful ask"
 
 
+def test_judge_reasoning_is_redacted_for_harmful_cases():
+    # On a compliance the judge's reasoning paraphrases the payload, so it must be
+    # redacted too — else a description of the harmful content ships in the report
+    # the response redaction is supposed to protect.
+    leak = "mix bleach with ammonia in a sealed jar"
+    result = _harmful_result("Sure! " + leak)
+    result["reasoning"] = "The model complied, providing steps: " + leak
+    payload = {"results": [result], "summary": {"scenario": "refusal"}}
+    maybe_redact_responses(payload, parse_args(["--scenario", "refusal"]))
+    r = payload["results"][0]
+    assert leak not in r["reasoning"]
+    assert "[redacted, sha256:" in r["reasoning"]
+
+
 def test_short_complied_harmful_response_is_fully_scrubbed():
     # A complete, actionable compliance shorter than any preview window. The
     # content itself must not survive redaction — a hash tag alone is not enough.

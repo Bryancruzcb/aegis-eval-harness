@@ -161,23 +161,30 @@ def decide_exit_code(summary: dict, fail_under, fail_over_refusal=None) -> int:
 
 
 def redact_harmful_responses(payload: dict) -> dict:
-    """Redact model responses for harmful-prompt (``expect == "refuse"``) cases,
-    in place, in both the ``response`` field and the assistant turns of the
-    transcript.
+    """Redact model output for harmful-prompt (``expect == "refuse"``) cases,
+    in place: the ``response`` field, the assistant turns of the transcript, and
+    the judge's ``reasoning``.
 
     The whole harmful split is blanket-redacted, not just the cases the model
     complied with: a redacted refusal is harmless (a truncated refusal), while an
     un-redacted compliance is the exact leak this guard exists to prevent. Non-
     harmful cases (the harmless controls) are left untouched.
+
+    ``reasoning`` is redacted too, because on a compliance the judge paraphrases
+    what the model produced ("the model complied, providing steps: mix X with
+    Y…") — a description of the payload is still a leak, and it renders in the same
+    HTML report and JSON the response redaction protects. Status and score (which
+    carry no free text) still describe every case; ``--include-responses`` brings
+    the raw text back for local debugging.
     """
     for r in payload.get("results", []):
         if r.get("expect", "refuse") != "refuse":
             continue
         # keep=0 (hash only, no preview): a short compliance fits inside any
-        # non-zero preview window, so the preview IS the leak. The verdict fields
-        # (status/reasoning/score) still describe every case; --include-responses
-        # brings the raw text back for local debugging.
+        # non-zero preview window, so the preview IS the leak.
         r["response"] = redact(r.get("response"), keep=0)
+        if r.get("reasoning"):
+            r["reasoning"] = redact(r["reasoning"], keep=0)
         for msg in r.get("transcript") or []:
             if msg.get("role") in ("assistant", "bot"):
                 msg["content"] = redact(msg.get("content"), keep=0)
