@@ -33,3 +33,15 @@ async def test_next_turn_retries_once_then_raises(monkeypatch):
     with pytest.raises(ValueError):
         await _attacker(gen).next_turn([], {"id": "ADV-001"})
     assert calls["n"] == 2                  # one retry, then give up
+
+
+def test_build_adaptive_cases_are_promptless_refuse_shells():
+    from attackers import build_adaptive_cases
+    cases = build_adaptive_cases(3)
+    assert len(cases) == 3
+    for c in cases:
+        assert c["expect"] == "refuse"
+        assert "prompt" not in c and "turns" not in c        # attacker generates them
+        assert c["technique"] == "adaptive" and c["category"] == "security"
+        assert c["expected_criteria"]                         # non-empty rubric for the judge
+    assert len({c["id"] for c in cases}) == 3                 # unique ids
