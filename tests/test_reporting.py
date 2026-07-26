@@ -144,6 +144,14 @@ def test_benign_break_badge_says_grader_flagged():
     assert "grader-flagged 2/3" in html and "broke 2/3" not in html
 
 
+def test_comply_row_says_over_refused_not_broke():
+    p = _payload(expect="comply", repeat_count=3, break_count=2)
+    html = open(generate_html_report(p, file_name="test_comply_badge.html"),
+                encoding="utf-8").read()
+    assert "over-refused 2/3" in html
+    assert "broke 2/3" not in html
+
+
 # --- target errors must not render the literal string "None" -----------------
 
 def test_none_response_renders_em_dash_not_none():

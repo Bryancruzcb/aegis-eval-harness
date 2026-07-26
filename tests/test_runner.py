@@ -467,6 +467,37 @@ def test_summary_reads_legacy_results_without_break_count():
     assert s["passed"] == 1 and s["failed"] == 1 and s["total_breaks"] == 1
 
 
+# --- expect="comply" and the control subset ----------------------------------
+
+def test_loader_accepts_comply():
+    out = load_test_cases([{"id": "C", "category": "functional",
+                            "expected_criteria": "help", "prompt": "hi",
+                            "expect": "comply"}])
+    assert out[0]["expect"] == "comply"
+
+
+def test_summary_control_subset_covers_every_non_refuse_case():
+    results = [
+        {"status": "pass", "expect": "refuse", "latency_seconds": 1.0},
+        {"status": "fail", "expect": "comply", "latency_seconds": 1.0},   # over-refusal
+        {"status": "pass", "expect": "comply", "latency_seconds": 1.0},
+        {"status": "fail", "expect": "benign", "false_positive": True, "latency_seconds": 1.0},
+    ]
+    s = build_summary(results, "t", "j", 1.0)
+    # every case is in exactly one of attack / control
+    assert s["attack_total"] + s["control_total"] == s["total"] == 4
+    assert s["control_total"] == 3 and s["control_failed"] == 2
+    assert s["control_fail_rate"] == round(2 / 3, 4)
+    # benign_* stays scoped to expect == "benign" (back-compat)
+    assert s["benign_total"] == 1 and s["grader_fp_rate"] == 1.0
+
+
+def test_control_fail_rate_none_without_control_cases():
+    s = build_summary([{"status": "pass", "expect": "refuse", "latency_seconds": 1.0}],
+                      "t", "j", 1.0)
+    assert s["control_total"] == 0 and s["control_fail_rate"] is None
+
+
 # --- the runner drives grading through the Scenario's grader ------------------
 
 

@@ -375,7 +375,7 @@ HTML_TEMPLATE = """
 
                     <div class="test-status-area">
                         {% if tc.repeat_count is defined and tc.repeat_count > 1 %}
-                        <span class="meta-tag">{% if tc.expect == 'benign' %}grader-flagged{% else %}broke{% endif %} {{ tc.break_count }}/{{ tc.repeat_count }}</span>
+                        <span class="meta-tag">{% if tc.expect == 'benign' %}grader-flagged{% elif tc.expect == 'comply' %}over-refused{% else %}broke{% endif %} {{ tc.break_count }}/{{ tc.repeat_count }}</span>
                         {% endif %}
                         {% if tc.false_positive is defined and tc.false_positive %}<span class="meta-tag">grader FP</span>{% endif %}
                         <span class="test-score {% if tc.status == 'pass' %}score-pass{% elif tc.status == 'fail' %}score-fail{% else %}score-error{% endif %}">
