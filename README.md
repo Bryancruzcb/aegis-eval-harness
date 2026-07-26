@@ -202,22 +202,35 @@ python calibrate.py --dev           # score the seeded dev half instead
 python calibrate.py --limit 20      # a quick 20-row check
 ```
 
-Output is a confusion matrix and derived stats for the grader and for the naive
-baseline. A judge model must be configured for the escalated rows to be scored;
-the accuracy figures below are **placeholders until you run it**:
+Output is a confusion matrix and derived stats for the grader and the naive
+baseline. Measured on the **held-out 150-row half** (one pass, temperature 0)
+with `qwen2.5:7b` (local, via Ollama) as the escalation judge — the reference
+rows are the judges JBB ships in the same file, scored on the identical rows:
 
-| metric | refusal grader | naive JBB classifier |
-|--------|----------------|----------------------|
-| agreement with `human_majority` | _TBD — run to measure_ | _TBD — run to measure_ |
-| balanced accuracy | _TBD — run to measure_ | _TBD — run to measure_ |
-| MCC | _TBD — run to measure_ | _TBD — run to measure_ |
-| FPR / FNR | _TBD — run to measure_ | _TBD — run to measure_ |
+| classifier | agreement | balanced acc. | MCC | FPR / FNR |
+|------------|-----------|---------------|-----|-----------|
+| **refusal grader** (stage 1 + `qwen2.5:7b` judge) | 52.0% | 58.8% | **0.20** | 0.68 / 0.14 |
+| naive JBB `StringClassifier` | 56.0% | 64.2% | 0.34 | 0.68 / 0.04 |
+| _ref: GPT-4 judge_ | 89.3% | 89.0% | 0.77 | 0.10 / 0.13 |
+| _ref: Llama-3-70B judge_ | 90.0% | 90.9% | 0.80 | 0.13 / 0.05 |
+| _ref: Llama Guard 2_ | 86.0% | 85.6% | 0.71 | 0.13 / 0.16 |
+| _ref: HarmBench_ | 76.7% | 78.5% | 0.55 | 0.29 / 0.14 |
 
-The **majority-class baseline** is a property of the dataset, not of the grader:
-the labels are ~190/110, so a do-nothing classifier that always answers "not
-jailbroken" scores about **63%**. That floor is printed for reference alongside
-human–human agreement (the irreducible ceiling); the grader's own numbers above
-are only ever the measured ones.
+Human–human agreement on this half is **86.7%** (130/150 unanimous) — the
+irreducible ceiling. The **majority-class baseline** (always answer "not
+jailbroken") scores **62.7%**, a property of the dataset's ~63/37 label split.
+
+**The grader is judge-bound, and that is the finding.** Stage 1 auto-decides 41%
+of rows on markers alone and escalates the other 59% to the judge, so the
+grader's accuracy is dominated by the judge model behind it. With a free 7B local
+judge it lands at the naive string-classifier's level (MCC 0.20 vs 0.34); the
+four reference rows are stronger LLMs judging the same rows, and they reach MCC
+0.55–0.80. Of the grader's 64 false positives, **51 come from the weak judge**
+(a capable one resolves them) and 13 from stage 1 itself calling a non-standard
+refusal "complied" — the residual the length/marker floor cannot reach. The
+takeaway: swap in a GPT-4-class judge and this grader moves toward the 0.8 band.
+The two-stage framework is sound; the judge is the lever. Re-run the one-liner
+above with `--judge-provider gemini` (or any capable judge) to measure your own.
 
 **Scope of this calibration** — a single number will otherwise be read as
 validating everything, so:
