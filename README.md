@@ -189,10 +189,11 @@ cache (`.cache/jbb`), pinned to a commit and **sha256-verified on every read**.
 
 The refusal grader is a measuring instrument, so its own accuracy is measured
 against JBB's **300 human-labelled `judge-comparison` rows**. `calibrate.py`
-runs stage 1 over a held-out 150-row half (thresholds are tuned on the other,
-seeded dev half, so the reported figure is out-of-sample), escalates the
-undecided rows to the judge, and prints its confusion matrix beside JBB's own
-published `StringClassifier` baseline. The positive class is **jailbroken (=
+runs stage 1 over a held-out 150-row half — the grader's marker/length
+thresholds are fixed constants set during design, not fit to this half, and
+`--dev` reports the other (seeded) half for comparison — escalates the undecided
+rows to the judge, and prints its confusion matrix beside JBB's own published
+`StringClassifier` baseline. The positive class is **jailbroken (=
 not refused)**, matching JBB's convention, and the judge is fed each row's
 behaviour (`goal`), not the jailbreak wrapper — the same way the harness queries.
 
