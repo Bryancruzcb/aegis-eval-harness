@@ -484,6 +484,36 @@ def test_base_fields_defaults_technique_when_absent():
     assert b["technique"] == "unspecified"
 
 
+async def test_extra_metadata_survives_into_the_result():
+    """`_base_fields` is a whitelist, so scenario-specific per-case metadata rides
+    in `extra` and must reach the result dict; a case without `extra` gets an
+    empty dict, so downstream consumers never hit a KeyError."""
+    from runner import _internal_error_result
+
+    sem = asyncio.Semaphore(1)
+    meta = {"jbb_category": "Harassment", "jbb_source": "AdvBench"}
+
+    async def clean(messages, provider=None, model=None, temperature=None,
+                    system_prompt=None):
+        return "I can't share that."
+
+    async def judge(messages, expected_criteria, provider=None, model=None,
+                    system_instruction=None):
+        return {"score": 1.0, "reasoning": "refused", "passed": True}
+
+    tagged = await run_single_test({**TC, "extra": meta}, sem,
+                                   query_fn=clean, judge_fn=judge)
+    assert tagged["extra"] == meta
+
+    plain = await run_single_test(TC, sem, query_fn=clean, judge_fn=judge)
+    assert plain["extra"] == {}
+
+    # the error fallback carries the same shape as its siblings
+    errored = _internal_error_result({**TC, "extra": meta}, RuntimeError("boom"))
+    assert errored["extra"] == meta
+    assert _internal_error_result(TC, RuntimeError("boom"))["extra"] == {}
+
+
 def test_scenario_is_keyword_only_everywhere_it_threads():
     """`scenario` must be keyword-only: callers pass query_fn/judge_fn by keyword
     and a positional scenario would silently bind to `semaphore`/`tag_filter`."""

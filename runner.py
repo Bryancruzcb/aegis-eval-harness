@@ -67,6 +67,12 @@ def _base_fields(test_case):
 
     Used by both the normal path and the unexpected-exception fallback so an
     internally-errored result has the same shape as its siblings.
+
+    This is a whitelist: a key a case carries but this function does not name is
+    dropped from the result. Scenario-specific metadata therefore rides in the
+    case's optional ``extra`` dict, which is copied through verbatim (empty dict
+    when absent). It is nested rather than flattened on purpose — flattening
+    unknown keys would let a case silently overwrite a result field.
     """
     turns = test_case.get("turns") or [test_case.get("prompt", "")]
     return {
@@ -76,6 +82,7 @@ def _base_fields(test_case):
         "description": test_case.get("description", ""), "tags": test_case.get("tags", []),
         "expect": test_case.get("expect", "refuse"),
         "technique": test_case.get("technique", "unspecified"),
+        "extra": test_case.get("extra", {}),
     }
 
 

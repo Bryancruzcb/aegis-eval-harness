@@ -178,6 +178,8 @@ they run offline and in CI (see `.github/workflows/ci.yml`).
 | `runner.py`       | Async orchestration, per-case status, summary |
 | `target.py`       | The model under test + its guardian system prompt |
 | `evaluators.py`   | Deterministic checks + the LLM judge |
+| `graders.py`      | `Screen`/`Verdict` value objects, the `Grader` protocol, `SecretGuardianGrader` |
+| `scenarios.py`    | The `Scenario` dataclass + the `SCENARIOS` registry |
 | `providers.py`    | Shared clients, retry policy, error taxonomy |
 | `reporter.py`     | Terminal summary + HTML dashboard |
 | `test_cases.json` | The suite of prompts and expected criteria |
