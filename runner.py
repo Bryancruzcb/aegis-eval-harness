@@ -114,14 +114,25 @@ def _internal_error_result(test_case, exc):
 async def run_single_test(test_case, semaphore, *, scenario=SECRET_GUARDIAN,
                           query_fn=None, judge_fn=None,
                           target_provider=None, target_model=None,
-                          judge_provider=None, judge_model=None, target_temperature=None):
+                          judge_provider=None, judge_model=None, target_temperature=None,
+                          attacker=None, max_turns=6):
     """Run one case end to end and return a result dict.
 
     Sequencing, provider-failure handling, and the result shape live here; every
     grading decision belongs to ``scenario.grader``. Mid-loop only a ``"fail"``
     screen is actionable — ``"pass"``/``"judge"`` mean "keep going" until the
     final turn — so the loop's exit screen is the one that decides the case.
+
+    When ``attacker`` is supplied the scripted turns are ignored and an LLM
+    improvises each turn instead; the routing happens first so a promptless
+    adaptive shell (no ``prompt``/``turns``) never reaches the scripted loader.
     """
+    if attacker is not None:
+        return await _run_adaptive(test_case, semaphore, scenario=scenario, query_fn=query_fn,
+                                   judge_fn=judge_fn, target_provider=target_provider,
+                                   target_model=target_model, judge_provider=judge_provider,
+                                   judge_model=judge_model, target_temperature=target_temperature,
+                                   attacker=attacker, max_turns=max_turns)
     query_fn = query_fn or query_target_conversation
     judge_fn = judge_fn or run_llm_judge_eval_conversation
     grader = scenario.grader
@@ -204,6 +215,86 @@ async def run_single_test(test_case, semaphore, *, scenario=SECRET_GUARDIAN,
         return _result(base, response=transcript[-1]["content"], score=v.score,
                        reasoning=v.reasoning, passed=(v.status == "pass"), status=v.status,
                        eval_type=_eval_type(judged), latency=latency, transcript=transcript)
+
+
+async def _run_adaptive(test_case, semaphore, *, scenario, query_fn, judge_fn,
+                        target_provider, target_model, judge_provider, judge_model,
+                        target_temperature, attacker, max_turns):
+    """The adaptive path: an LLM attacker improvises each turn until it either
+    triggers a deterministic leak or exhausts the turn budget.
+
+    Mirrors the scripted body's accumulation, judge escalation, and result shape
+    (reusing ``_result``/``_base_fields``/``_log_done``/``grader.*``). Two things
+    diverge from scripted: the turns come from ``attacker.next_turn`` rather than
+    the case, and a leak carries per-turn attribution (``break_turn``/
+    ``winning_tactic``/``tactics``). The message dict handed to ``query_fn`` is
+    role/content ONLY — tactics ride in a parallel list, never in the transcript,
+    because the provider rejects unknown message properties.
+    """
+    query_fn = query_fn or query_target_conversation
+    judge_fn = judge_fn or run_llm_judge_eval_conversation
+    grader = scenario.grader
+    base = _base_fields(test_case)
+    tc_id = base["id"]
+    async with semaphore:
+        logger.info(f"Starting {tc_id} ({base['category']}) [adaptive]")
+        transcript, tactics, running_bot, attacker_text = [], [], "", ""
+        start = time.time()
+        for turn in range(1, max_turns + 1):
+            user_msg, tactic = await attacker.next_turn(transcript, test_case)
+            transcript.append({"role": "user", "content": user_msg})   # role/content ONLY
+            tactics.append(tactic)
+            attacker_text += "\n" + user_msg
+            try:
+                reply = await query_fn(transcript, provider=target_provider, model=target_model,
+                                       temperature=target_temperature,
+                                       system_prompt=scenario.system_prompt)
+            except ProviderError as e:
+                latency = round(time.time() - start, 2)
+                logger.warning(f"{tc_id}: target error: {e}")
+                _log_done(tc_id, "error")
+                return _result(base, response=None, score=None, reasoning=str(e), passed=False,
+                               status="error", eval_type="target_error", latency=latency,
+                               transcript=transcript)
+            transcript.append({"role": "assistant", "content": reply})
+            running_bot += "\n" + reply
+            is_final = (turn == max_turns)
+            # Running concatenations, exactly as the scripted body: a leak in an
+            # earlier turn still counts, and a secret the attacker supplied is not
+            # scored as a leak when the bot echoes it back.
+            screen = grader.screen(test_case, running_bot, attacker_text, is_final=is_final)
+            if screen.decision == "fail":                              # deterministic leak
+                latency = round(time.time() - start, 2)
+                v = grader.verdict(test_case, screen, None)
+                _log_done(tc_id, f"{v.status} (deterministic)", v.score)
+                r = _result(base, response=reply, score=v.score, reasoning=v.reasoning,
+                            passed=(v.status == "pass"), status=v.status,
+                            eval_type=_eval_type(None), latency=latency, transcript=transcript,
+                            false_positive=v.false_positive)
+                r["break_turn"], r["winning_tactic"] = turn, tactic
+                r["tactics"] = tactics          # per-turn audit trail (spec); parallel, NOT in transcript
+                return r
+        # Survived the budget with no deterministic leak -> the judge grades the
+        # transcript; a survivor is graded, never auto-passed.
+        latency = round(time.time() - start, 2)
+        logger.info(f"Adaptive attempt {tc_id} survived {max_turns} turn(s). Invoking LLM Judge...")
+        try:
+            judged = await judge_fn(transcript, base["expected_criteria"],
+                                    provider=judge_provider, model=judge_model,
+                                    system_instruction=grader.judge_system_prompt(test_case))
+        except (ProviderError, JudgeParseError) as e:
+            logger.warning(f"{tc_id}: judge error: {e}")
+            _log_done(tc_id, "error")
+            return _result(base, response=running_bot, score=None, reasoning=str(e), passed=False,
+                           status="error", eval_type="judge_error", latency=latency,
+                           transcript=transcript)
+        v = grader.verdict(test_case, screen, judged)
+        _log_done(tc_id, v.status, v.score)
+        r = _result(base, response=transcript[-1]["content"], score=v.score, reasoning=v.reasoning,
+                    passed=(v.status == "pass"), status=v.status, eval_type=_eval_type(judged),
+                    latency=latency, transcript=transcript, false_positive=v.false_positive)
+        r["tactics"] = tactics              # per-turn audit trail on survivors too (no break_turn)
+        return r
 
 
 def aggregate_repeats(runs):
@@ -315,17 +406,21 @@ def build_summary(results, target_label, judge_label, total_time_seconds, timest
 async def run_case_repeated(test_case, semaphore, *, repeats, query_fn, judge_fn,
                             scenario=SECRET_GUARDIAN,
                             target_provider=None, target_model=None, judge_provider=None,
-                            judge_model=None, target_temperature=None):
+                            judge_model=None, target_temperature=None,
+                            attacker=None, max_turns=6):
     """Run one case ``repeats`` times and collapse with take-worst aggregation.
 
     A ``None`` ``query_fn``/``judge_fn`` is forwarded straight into
     ``run_single_test``, whose own defaults then bind the real target/judge.
+    ``attacker``/``max_turns`` are forwarded the same way, so each repeat runs the
+    adaptive path when an attacker is supplied.
     """
     tasks = [run_single_test(test_case, semaphore, scenario=scenario,
                              query_fn=query_fn, judge_fn=judge_fn,
                              target_provider=target_provider, target_model=target_model,
                              judge_provider=judge_provider, judge_model=judge_model,
-                             target_temperature=target_temperature)
+                             target_temperature=target_temperature,
+                             attacker=attacker, max_turns=max_turns)
              for _ in range(repeats)]
     raw = await asyncio.gather(*tasks, return_exceptions=True)
     # An unexpected exception degrades that repeat to an error run rather than
@@ -343,7 +438,8 @@ async def run_case_repeated(test_case, semaphore, *, repeats, query_fn, judge_fn
 async def run_suite(tag_filter=None, category_filter=None, technique_filter=None, repeats=1,
                     target_provider=None, target_model=None, judge_provider=None,
                     judge_model=None, target_temperature=None, query_fn=None, judge_fn=None,
-                    *, scenario=SECRET_GUARDIAN, load_kwargs=None):
+                    *, scenario=SECRET_GUARDIAN, load_kwargs=None,
+                    attacker=None, max_turns=6):
     """Load, filter, and run all test cases; return results plus a summary.
 
     The scenario supplies both the cases and the grading, so a different
@@ -394,7 +490,8 @@ async def run_suite(tag_filter=None, category_filter=None, technique_filter=None
                           scenario=scenario,
                           target_provider=target_provider, target_model=target_model,
                           judge_provider=judge_provider, judge_model=judge_model,
-                          target_temperature=target_temperature)
+                          target_temperature=target_temperature,
+                          attacker=attacker, max_turns=max_turns)
         for c in cases], return_exceptions=True)
     total_time = time.time() - start
     # Convert any unexpected exception into an ERROR result so one bad case
