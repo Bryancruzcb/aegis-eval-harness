@@ -4,13 +4,23 @@
 - **Status:** Draft for review
 - **Phase:** 2a of 3 (2b = refusal benchmark; 3 = adaptive attacker)
 
-## In one paragraph
+## In plain terms
 
-The passcode bot is currently welded into four files, so the harness can only ever test one
-thing. Phase 2a pulls it out behind two small interfaces — `Scenario` and `Grader` — so a second
-scenario can be added in 2b. **Nothing a user sees changes.** The deliverable is: the harness
-does exactly what it does today, with the scenario now a value instead of a hardcoded constant,
-and with the one test gap that would have hidden a regression closed.
+The harness tests one situation: *can a support bot be tricked into revealing its password?*
+That situation is glued into the machine — spread across four files — so the harness can't test
+anything else.
+
+This phase takes it out of the guts and puts it in a **box**. The machine goes from "I test the
+password bot" to "hand me a box, I'll run whatever is in it." Then we hand it the same password
+test, in a box.
+
+**Nothing new works when this is done.** Same tests, same results, same report. That is the
+point: a change that is supposed to alter nothing is a change you can actually verify. If any
+existing test's expected result has to change, the refactor is wrong.
+
+One thing does get added: a missing test. Today nothing exercises a multi-turn *harmless* case,
+which is exactly the combination this refactor could break — so the "our tests will catch it"
+claim wasn't true until we write it.
 
 ## 1. Why this is its own phase
 

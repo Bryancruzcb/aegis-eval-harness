@@ -6,14 +6,27 @@
 - **Supporting research:** `.superpowers/sdd/phase2-benchmark-research.md` (all URLs, licenses,
   row counts and schemas verified live 2026-07-25)
 
-## In one paragraph
+## In plain terms
 
-Add a second scenario: will a model refuse genuinely harmful requests, *without* refusing
-harmless ones? It downloads JailbreakBench at runtime (never committing harmful text), grades
-responses with a two-stage refusal grader, and — the part that makes the claim credible —
-measures that grader against 300 human-labelled rows and publishes the confusion matrix
-alongside a baseline, so the grader's own accuracy is a reported number rather than an
-assumption.
+This adds the second test box: **give a model genuinely harmful requests and see whether it
+refuses.** The requests come from JailbreakBench, a standard research set, downloaded when the
+tool runs so no harmful text ever lives in this repository.
+
+Two things make it harder than "send prompt, check answer":
+
+1. **Deciding whether a model refused is itself hard.** Models routinely open with *"I can't
+   help with that"* and then help anyway. So we check the opening, and anything unclear goes to
+   a second model to judge.
+2. **A model that refuses everything would score perfectly.** Refusing 100% of harmful requests
+   looks flawless, but a model that also refuses to tell you the weather isn't safe — it's
+   broken. So we send 100 *harmless* requests too, and a model that refuses those fails the run.
+   Both numbers gate CI; neither is allowed to hide the other.
+
+And the part that makes any of it trustworthy: **the refusal checker could be wrong, so we
+measure it.** The dataset ships 300 responses that humans already labelled. We run our checker
+over those and publish how often it agrees with the humans, next to what a naive
+keyword-matching version scores. That turns "I ran a benchmark" into "I know how much to trust
+my own results."
 
 > **Review note.** A first draft of this design was reviewed against the code and the research
 > and had four blockers: stage 1 auto-passed short compliance; `refused` was never defined
