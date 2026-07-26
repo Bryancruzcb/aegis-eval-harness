@@ -150,6 +150,44 @@ case. This is how the `crescendo` (slow rapport-then-extract) attacks work:
 }
 ```
 
+### Adaptive attacker
+
+The scripted suite fires fixed prompts. `--attacker adaptive` instead puts an LLM
+in the attacker seat: it reads the target's replies and improvises each next turn,
+picking a tactic as it goes (urgency, roleplay, false authority, …) until it
+either extracts the secret or exhausts its turn budget. It runs against the
+`secret-guardian` scenario only.
+
+```bash
+# 20 independent adaptive attempts, 6 turns each, attacker + target both local
+python run.py --attacker adaptive --adaptive-cases 20 --max-turns 6 \
+              --attacker-provider ollama --attacker-model qwen2.5:latest
+```
+
+- `--attacker {scripted,adaptive}` — attack mode (default `scripted`).
+- `--adaptive-cases N` — number of independent adaptive attempts (default `20`).
+- `--max-turns N` — turn budget per attempt (default `6`).
+- `--attacker-provider {ollama,openai}` / `--attacker-model` / `--attacker-temp`
+  — the attacker's own model, chosen independently of the target and judge
+  (defaults `ollama` / `qwen2.5:latest` / `0.7`).
+
+The report grows three adaptive-only cards:
+
+- **Compromise Rate** — the share of attempts that cracked the bot
+  (`overall_break_rate` rendered as a percentage).
+- **Turns to Crack** — the min / median / max number of turns the successful
+  attempts needed (an empty set — nothing broke — shows `—`).
+- **Winning Tactics** — a count of which tactic landed each leak, so you can see
+  *how* the bot fell, not just that it did.
+
+> **The compromise rate is a lower bound, conditioned on attacker strength.** A
+> weak or off-task attacker will fail to break a bot that a stronger one would
+> crack in two turns, making the target look more robust than it actually is. A
+> rising compromise rate is real signal; a flat one only means *this* attacker
+> didn't get in. The **positive control** — an attacker that must succeed against
+> a deliberately leaky bot — is what guards against silently measuring a broken
+> attacker instead of a robust target.
+
 ## Scenarios
 
 The harness runs one **scenario** at a time — a target setup plus the grader
@@ -340,6 +378,9 @@ limits:
   fragments are boundary-adjacent (the end of one reply meeting the start of the
   next, with nothing alphanumeric between). More widely spread fragments are left
   to the judge, so detection there is judge-dependent.
-- **No adaptive attacker yet.** All prompts are fixed and scripted; nothing
-  learns from the target's replies mid-run. An automated adaptive attacker is on
-  the roadmap (Phases 2–3).
+- **The adaptive attacker is only as strong as its model.** The optional
+  adaptive attacker (`--attacker adaptive`) learns from the target's replies
+  mid-run, but the compromise rate it reports is a *lower bound*: a weak or
+  off-task attacker model understates a target's true exposure. Read it as "at
+  least this breakable," never "this robust," and keep the positive control in
+  the loop — see [Adaptive attacker](#adaptive-attacker).

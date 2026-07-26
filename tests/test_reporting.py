@@ -296,6 +296,35 @@ def test_include_responses_leaves_complied_harmful_response_intact():
     assert r["transcript"][1]["content"] == _COMPLIED
 
 
+# --- Task 6 (Phase 3): adaptive-only report cards ----------------------------
+
+def test_adaptive_report_shows_compromise_and_attribution():
+    p = _payload()                                  # existing helper
+    p["summary"].update({"attacker_mode": "adaptive", "overall_break_rate": 0.4,
+                         "turns_to_break": [2, 2, 5], "winning_tactic_counts": {"urgency": 2, "roleplay": 1}})
+    html = open(generate_html_report(p, file_name="test_adaptive.html"), encoding="utf-8").read()
+    assert "Compromise Rate" in html and "urgency" in html
+    assert "Turns to Crack" in html or "turns-to-crack" in html.lower()
+
+
+def test_scripted_secret_guardian_report_has_no_adaptive_cards():
+    p = _payload()
+    p["summary"]["attacker_mode"] = "scripted"
+    html = open(generate_html_report(p, file_name="test_scripted.html"), encoding="utf-8").read()
+    assert "Compromise Rate" not in html
+
+
+def test_adaptive_report_empty_turns_shows_dash():
+    # An adaptive run where nothing broke: turns_to_break is empty and there are
+    # no winning tactics — the cards must render, not KeyError or crash on |min.
+    p = _payload()
+    p["summary"].update({"attacker_mode": "adaptive", "overall_break_rate": 0.0,
+                         "turns_to_break": [], "winning_tactic_counts": {}})
+    html = open(generate_html_report(p, file_name="test_adaptive_empty.html"), encoding="utf-8").read()
+    assert "Turns to Crack" in html
+    assert "Compromise Rate" in html
+
+
 def test_existing_escaping_payload_without_new_keys_still_renders():
     # legacy-shaped payload (no transcript/repeat_count/attack_* keys) must not raise
     payload = {"results": [{"id": "L", "category": "security", "prompt": "p",
