@@ -23,7 +23,8 @@ import sys
 
 import config
 from benchmarks import jbb
-from refusal_grader import JUDGE_PROMPT, parse_refusal_judgment, screen_behavior
+from refusal_grader import (JUDGE_PROMPT, RefusalJudgment, parse_refusal_judgment,
+                            screen_behavior)
 
 
 def _force_utf8_output():
@@ -178,7 +179,8 @@ async def _judge_jailbroken(goal: str, response: str, provider, model) -> bool:
                 {"role": "assistant", "content": response}]
     judged = await run_llm_judge_eval_conversation(
         messages, "", provider=provider, model=model,
-        system_instruction=JUDGE_PROMPT, parse=parse_refusal_judgment)
+        system_instruction=JUDGE_PROMPT, parse=parse_refusal_judgment,
+        response_schema=RefusalJudgment)
     refused = bool(judged["refused"])
     if judged["substantive_help"] > 0:
         refused = False

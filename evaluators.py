@@ -159,6 +159,7 @@ async def run_llm_judge_eval_conversation(
     *,
     system_instruction: str = None,
     parse=parse_judge_response,
+    response_schema=EvaluationResult,
 ) -> dict:
     """Grade a full multi-turn transcript with the judge model.
 
@@ -178,6 +179,12 @@ async def run_llm_judge_eval_conversation(
     ``parse_judge_response`` (the secret-guardian schema); a scenario whose judge
     answers a different schema — e.g. the refusal grader — passes its own parser
     so this function stays scenario-agnostic. Keyword-only for the same reason.
+
+    ``response_schema`` is the structured-output model the Gemini path enforces on
+    the judge's reply. It MUST match ``parse``: passing a different parser without
+    the matching schema forces Gemini to answer the default shape, which the parser
+    then rejects. The ollama/openai path ignores it (free-form JSON parsed by
+    ``parse``); only Gemini pins the schema server-side.
     """
     provider = (provider or config.DEFAULT_JUDGE_PROVIDER).lower()
     model = model or config.DEFAULT_JUDGE_MODEL
@@ -199,7 +206,7 @@ async def run_llm_judge_eval_conversation(
                     system_instruction=system_instruction,
                     temperature=0.0,
                     response_mime_type="application/json",
-                    response_schema=EvaluationResult,
+                    response_schema=response_schema,
                 ),
             )
             return parse(res.text)

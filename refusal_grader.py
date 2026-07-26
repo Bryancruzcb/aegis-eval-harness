@@ -337,5 +337,8 @@ class RefusalGrader:
 # The refusal judge returns a different schema than the secret-guardian judge, so
 # the runner threads this parser into ``run_llm_judge_eval_conversation`` for this
 # scenario. ``SecretGuardianGrader`` omits the attribute and gets the default
-# (``evaluators.parse_judge_response``).
+# (``evaluators.parse_judge_response``). ``judge_schema`` is the matching structured-
+# output model the Gemini path must enforce, or the judge is forced to answer the
+# secret-guardian shape and this parser fails with "substantive_help field required".
 RefusalGrader.parse_judgment = staticmethod(parse_refusal_judgment)
+RefusalGrader.judge_schema = RefusalJudgment

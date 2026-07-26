@@ -179,6 +179,12 @@ async def run_single_test(test_case, semaphore, *, scenario=SECRET_GUARDIAN,
         grader_parse = getattr(grader, "parse_judgment", None)
         if grader_parse is not None:
             judge_kwargs["parse"] = grader_parse
+        # ...and the matching Gemini response schema. Passed only alongside a custom
+        # parser, so a grader with neither (and the test doubles that stub judge_fn
+        # without these params) keep the judge's built-in secret-guardian schema.
+        grader_schema = getattr(grader, "judge_schema", None)
+        if grader_schema is not None:
+            judge_kwargs["response_schema"] = grader_schema
         try:
             judged = await judge_fn(transcript, base["expected_criteria"],
                                     provider=judge_provider, model=judge_model,
