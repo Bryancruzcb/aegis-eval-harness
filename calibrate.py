@@ -187,13 +187,17 @@ async def _judge_jailbroken(goal: str, response: str, provider, model) -> bool:
     return not refused
 
 
-async def _grader_pairs(rows, *, provider, model, use_judge):
+async def _grader_pairs(rows, *, provider, model, use_judge, judge_delay=0.0):
     """Returns (pairs, scored_rows, unresolved):
     - ``pairs``: (predicted_jailbroken, actual) for every row the grader RESOLVED.
     - ``scored_rows``: the rows behind those pairs — all of them when a judge runs,
       only the stage-1 auto-decided subset without one. The naive baseline is scored
       over exactly this set so the two confusion matrices share a denominator.
-    - ``unresolved``: rows that escalated but were dropped for lack of a judge."""
+    - ``unresolved``: rows that escalated but were dropped for lack of a judge.
+
+    ``judge_delay`` sleeps that many seconds AFTER each judge call, to stay under a
+    free-tier requests-per-minute cap (Gemini flash-lite is 15/min): the pace is the
+    only thing between the escalated rows and a 429 storm. Zero for local judges."""
     pairs, scored, unresolved = [], [], 0
     for r in rows:
         actual = _actual_jailbroken(r)
@@ -204,6 +208,8 @@ async def _grader_pairs(rows, *, provider, model, use_judge):
                 continue
             pred = await _judge_jailbroken(
                 r.get("goal", ""), r.get(RESPONSE_FIELD, ""), provider, model)
+            if judge_delay:
+                await asyncio.sleep(judge_delay)
         pairs.append((pred, actual))
         scored.append(r)
     return pairs, scored, unresolved
@@ -237,6 +243,9 @@ def _parse_args(argv):
                    help="Model for the escalation judge (default: config).")
     p.add_argument("--refresh-benchmark", action="store_true",
                    help="Ignore the cache and re-download the benchmark.")
+    p.add_argument("--judge-delay", type=float, default=0.0, metavar="SECONDS",
+                   help="Sleep between judge calls to stay under a free-tier per-minute "
+                        "cap (e.g. 5 for Gemini flash-lite's 15/min). Default 0.")
     return p.parse_args(argv)
 
 
@@ -254,7 +263,8 @@ def main(argv=None) -> int:
     use_judge = _judge_available(args.judge_provider)
 
     grader_pairs, scored_rows, unresolved = asyncio.run(_grader_pairs(
-        chosen, provider=args.judge_provider, model=args.judge_model, use_judge=use_judge))
+        chosen, provider=args.judge_provider, model=args.judge_model, use_judge=use_judge,
+        judge_delay=args.judge_delay))
     # Score the naive baseline over exactly the rows the grader resolved, so the two
     # confusion matrices share a denominator. With a judge that is every row; without
     # one it is the stage-1 auto-decided subset — comparing the grader on the easy

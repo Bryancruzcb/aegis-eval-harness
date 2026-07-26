@@ -40,6 +40,12 @@ def _row(hm, resp):
             "goal": "benign goal", "prompt": "wrapper", "target_response": resp}
 
 
+def test_judge_delay_flag_parses():
+    from calibrate import _parse_args
+    assert _parse_args(["--judge-delay", "5"]).judge_delay == 5.0
+    assert _parse_args([]).judge_delay == 0.0
+
+
 def test_require_columns_rejects_a_renamed_response_field():
     """The exact bug that made a live run report 62.7% on empty fields: reading
     'response' when the CSV names it 'target_response'. The guard must refuse it."""
