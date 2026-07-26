@@ -74,6 +74,12 @@ def parse_args(argv=None):
                         help="Seed for the stratified sample")
     parser.add_argument("--refresh-benchmark", action="store_true",
                         help="Ignore the cache and re-download the benchmark")
+    parser.add_argument("--fail-over-refusal", type=float, default=None, metavar="PCT",
+                        help="Exit non-zero if the control-case failure rate (over-refusal of "
+                             "harmless requests) exceeds this percentage (e.g. 20)")
+    parser.add_argument("--allow-self-grading", action="store_true",
+                        help="Permit the same model to grade its own output (target == judge); "
+                             "refused by default because a self-report is not an evaluation")
     args = parser.parse_args(argv)
     # Also validates config.REPEATS_PER_CASE, which supplies the default: a
     # repeats of 0 would aggregate an empty run list.
@@ -122,7 +128,12 @@ def _gate_eval(summary: dict):
     return summary.get("attack_evaluated", summary["evaluated"])
 
 
-def decide_exit_code(summary: dict, fail_under) -> int:
+def is_self_grading(target_label: str, judge_label: str) -> bool:
+    """True when the same model grades its own output — a self-report, not an evaluation."""
+    return target_label == judge_label
+
+
+def decide_exit_code(summary: dict, fail_under, fail_over_refusal=None) -> int:
     """Map a run summary to a process exit code for CI.
 
     0 = ok, 1 = quality gate failed or every case errored (inconclusive).
@@ -136,6 +147,13 @@ def decide_exit_code(summary: dict, fail_under) -> int:
     gate_eval = _gate_eval(summary)
     if fail_under is not None and gate_eval and gate_rate is not None and gate_rate < fail_under:
         return 1  # quality gate failed
+    # A model that refuses everything scores a perfect attack rate; the control
+    # half is the only thing that catches it. control_fail_rate is a FRACTION
+    # (0-1); fail_over_refusal is a PERCENT — the *100 bridges the units.
+    cfr = summary.get("control_fail_rate")
+    if (fail_over_refusal is not None and summary.get("control_total", 0) > 0
+            and cfr is not None and cfr * 100.0 > fail_over_refusal):
+        return 1  # over-refusal ceiling exceeded
     return 0
 
 
@@ -159,6 +177,18 @@ async def main_async() -> int:
             print(f"  {name}=your_key_here")
         print("Or run against a local model with:  --target-provider ollama --judge-provider ollama")
         return 2
+
+    # Labels are built exactly as the runner builds them, so the self-grading
+    # check keys off the same provider:model strings the report will show.
+    target_label = f"{args.target_provider or config.DEFAULT_TARGET_PROVIDER}:{args.target_model or config.DEFAULT_TARGET_MODEL}"
+    judge_label = f"{args.judge_provider or config.DEFAULT_JUDGE_PROVIDER}:{args.judge_model or config.DEFAULT_JUDGE_MODEL}"
+    if is_self_grading(target_label, judge_label) and not args.allow_self_grading:
+        print(f"{YELLOW}[Config] Refusing to run: the target and the judge are the same model "
+              f"({target_label}). A model grading its own output is a self-report, not an "
+              f"independent evaluation.{RESET}")
+        print("Use a different --judge-model/--judge-provider, or pass --allow-self-grading "
+              "to acknowledge the limitation.")
+        return 2  # distinct from the quality-gate's exit 1
 
     print("Initializing AegisEval Suite...")
 
@@ -202,15 +232,29 @@ async def main_async() -> int:
         print(f"{YELLOW}⚠ {summary['errors']} case(s) errored (infrastructure issue, not a model failure).{RESET}")
 
     # Exit-code policy for CI.
-    exit_code = decide_exit_code(summary, args.fail_under)
+    exit_code = decide_exit_code(summary, args.fail_under, args.fail_over_refusal)
     if exit_code != 0:
+        cfr = summary.get("control_fail_rate")
+        over_refusing = (
+            args.fail_over_refusal is not None and summary.get("control_total", 0) > 0
+            and cfr is not None and cfr * 100.0 > args.fail_over_refusal
+        )
+        under_performing = (
+            args.fail_under is not None and _gate_eval(summary)
+            and _gate_rate(summary) is not None and _gate_rate(summary) < args.fail_under
+        )
         if summary["total"] > 0 and summary["evaluated"] == 0:
             print(f"{RED}Run inconclusive: every case errored.{RESET}")
         elif summary.get("attack_total", 0) > 0 and summary.get("attack_evaluated", 1) == 0:
             print(f"{RED}Run inconclusive: every attack case errored (judge/target outage).{RESET}")
         else:
-            print(f"{RED}Quality gate failed: attack pass rate {_gate_rate(summary)}% "
-                  f"< {args.fail_under}%.{RESET}")
+            if under_performing:
+                print(f"{RED}Quality gate failed: attack pass rate {_gate_rate(summary)}% "
+                      f"< {args.fail_under}%.{RESET}")
+            if over_refusing:
+                print(f"{RED}Over-refusal gate failed: control failure rate "
+                      f"{round(cfr * 100.0, 1)}% > {args.fail_over_refusal}% "
+                      f"(the model refuses harmless requests).{RESET}")
     return exit_code
 
 
