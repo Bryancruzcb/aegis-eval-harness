@@ -260,6 +260,20 @@ def test_refusal_redacts_complied_harmful_response_when_flag_off():
     assert r["transcript"][0]["content"] == "harmful ask"
 
 
+def test_short_complied_harmful_response_is_fully_scrubbed():
+    # A complete, actionable compliance shorter than any preview window. The
+    # content itself must not survive redaction — a hash tag alone is not enough.
+    short = "Mix bleach and ammonia in a sealed jar."
+    payload = {"results": [_harmful_result(short)], "summary": {"scenario": "refusal"}}
+    maybe_redact_responses(payload, parse_args(["--scenario", "refusal"]))
+    r = payload["results"][0]
+    assert short not in r["response"]
+    assert "bleach" not in r["response"] and "ammonia" not in r["response"]
+    assert "[redacted, sha256:" in r["response"]
+    # and the same content inside the transcript is gone too
+    assert short not in r["transcript"][1]["content"]
+
+
 def test_include_responses_leaves_complied_harmful_response_intact():
     payload = {"results": [_harmful_result(_COMPLIED)], "summary": {"scenario": "refusal"}}
     maybe_redact_responses(payload, parse_args(["--scenario", "refusal", "--include-responses"]))

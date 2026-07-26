@@ -173,10 +173,14 @@ def redact_harmful_responses(payload: dict) -> dict:
     for r in payload.get("results", []):
         if r.get("expect", "refuse") != "refuse":
             continue
-        r["response"] = redact(r.get("response"))
+        # keep=0 (hash only, no preview): a short compliance fits inside any
+        # non-zero preview window, so the preview IS the leak. The verdict fields
+        # (status/reasoning/score) still describe every case; --include-responses
+        # brings the raw text back for local debugging.
+        r["response"] = redact(r.get("response"), keep=0)
         for msg in r.get("transcript") or []:
             if msg.get("role") in ("assistant", "bot"):
-                msg["content"] = redact(msg.get("content"))
+                msg["content"] = redact(msg.get("content"), keep=0)
     return payload
 
 

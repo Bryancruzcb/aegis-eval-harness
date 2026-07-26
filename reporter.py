@@ -15,11 +15,15 @@ logger = logging.getLogger("AegisEval.Reporter")
 
 
 def redact(text: str, keep: int = 120) -> str:
-    """Truncate a response and append a content hash.
+    """Truncate a response to ``keep`` characters and append a content hash.
 
     The HTML report is the artifact most likely to be shared or screenshotted,
     and for any case the model complied with it would otherwise contain working
     harmful content verbatim. The hash keeps results comparable across runs.
+
+    ``keep`` is the preview length. For harmful-prompt responses the caller
+    passes ``keep=0`` (hash only): a short compliance fits inside any non-zero
+    window, so a preview of a compliance is itself the leak this guards against.
     """
     text = text or ""
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
