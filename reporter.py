@@ -6,12 +6,27 @@ value is HTML-escaped to keep the report from executing model-supplied scripts.
 """
 import hashlib
 import logging
+import statistics
 
 from jinja2 import Template
 
 import config
 
 logger = logging.getLogger("AegisEval.Reporter")
+
+
+def _median(values) -> str:
+    """Median of a numeric iterable, rendered clean; empty → em-dash.
+
+    Jinja ships ``|min``/``|max`` but no median, so the adaptive
+    ``Turns to Crack`` card registers this as a custom filter. Whole medians
+    print as integers (``2``) rather than ``2.0``.
+    """
+    vals = list(values or [])
+    if not vals:
+        return "—"
+    m = statistics.median(vals)
+    return str(int(m)) if float(m).is_integer() else str(round(m, 1))
 
 
 def redact(text: str, keep: int = 120) -> str:
@@ -341,10 +356,12 @@ HTML_TEMPLATE = """
                 <div class="label">Grader FP Rate</div>
                 <div class="value">{% if summary.grader_fp_rate is defined and summary.grader_fp_rate is not none %}{{ (summary.grader_fp_rate * 100) | round(1) }}%{% else %}—{% endif %}</div>
             </div>
+            {% if summary.attacker_mode is not defined or summary.attacker_mode != 'adaptive' %}
             <div class="metric-card accent-card">
                 <div class="label">Overall Break Rate</div>
                 <div class="value">{% if summary.overall_break_rate is defined and summary.overall_break_rate is not none %}{{ (summary.overall_break_rate * 100) | round(1) }}%{% else %}—{% endif %}</div>
             </div>
+            {% endif %}
             {% if summary.scenario is not defined or summary.scenario != 'refusal' %}
             <div class="metric-card accent-card">
                 <div class="label">Pass Rate</div>
@@ -374,6 +391,24 @@ HTML_TEMPLATE = """
                 <div class="value">{{ summary.errors }}</div>
             </div>
         </section>
+
+        {% if summary.attacker_mode is defined and summary.attacker_mode == 'adaptive' %}
+        <h2 style="font-size: 1.05rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem;">Adaptive Attacker</h2>
+        <section class="metrics-grid">
+            <div class="metric-card fail-card">
+                <div class="label">Compromise Rate</div>
+                <div class="value">{% if summary.overall_break_rate is defined and summary.overall_break_rate is not none %}{{ (summary.overall_break_rate * 100) | round(1) }}%{% else %}—{% endif %}</div>
+            </div>
+            <div class="metric-card accent-card">
+                <div class="label">Turns to Crack</div>
+                <div class="value" id="turns-to-crack">{% if summary.turns_to_break is defined and summary.turns_to_break %}{{ summary.turns_to_break | min }} / {{ summary.turns_to_break | median }} / {{ summary.turns_to_break | max }}{% else %}—{% endif %}</div>
+            </div>
+            <div class="metric-card accent-card">
+                <div class="label">Winning Tactics</div>
+                <div class="value" style="font-size: 1rem; line-height: 1.6;">{% if summary.winning_tactic_counts is defined and summary.winning_tactic_counts %}{% for tactic, n in summary.winning_tactic_counts.items() %}<div>{{ tactic }}: {{ n }}</div>{% endfor %}{% else %}—{% endif %}</div>
+            </div>
+        </section>
+        {% endif %}
 
         <section class="controls">
             <div class="tabs">
@@ -493,6 +528,7 @@ HTML_TEMPLATE = """
 def generate_html_report(results_payload: dict, file_name: str = "report.html") -> str:
     """Render results into a premium dark-themed HTML report (autoescaped)."""
     template = Template(HTML_TEMPLATE, autoescape=True)
+    template.environment.filters["median"] = _median
     html_content = template.render(
         results=results_payload["results"],
         summary=results_payload["summary"],

@@ -114,14 +114,25 @@ def _internal_error_result(test_case, exc):
 async def run_single_test(test_case, semaphore, *, scenario=SECRET_GUARDIAN,
                           query_fn=None, judge_fn=None,
                           target_provider=None, target_model=None,
-                          judge_provider=None, judge_model=None, target_temperature=None):
+                          judge_provider=None, judge_model=None, target_temperature=None,
+                          attacker=None, max_turns=6):
     """Run one case end to end and return a result dict.
 
     Sequencing, provider-failure handling, and the result shape live here; every
     grading decision belongs to ``scenario.grader``. Mid-loop only a ``"fail"``
     screen is actionable — ``"pass"``/``"judge"`` mean "keep going" until the
     final turn — so the loop's exit screen is the one that decides the case.
+
+    When ``attacker`` is supplied the scripted turns are ignored and an LLM
+    improvises each turn instead; the routing happens first so a promptless
+    adaptive shell (no ``prompt``/``turns``) never reaches the scripted loader.
     """
+    if attacker is not None:
+        return await _run_adaptive(test_case, semaphore, scenario=scenario, query_fn=query_fn,
+                                   judge_fn=judge_fn, target_provider=target_provider,
+                                   target_model=target_model, judge_provider=judge_provider,
+                                   judge_model=judge_model, target_temperature=target_temperature,
+                                   attacker=attacker, max_turns=max_turns)
     query_fn = query_fn or query_target_conversation
     judge_fn = judge_fn or run_llm_judge_eval_conversation
     grader = scenario.grader
@@ -206,6 +217,90 @@ async def run_single_test(test_case, semaphore, *, scenario=SECRET_GUARDIAN,
                        eval_type=_eval_type(judged), latency=latency, transcript=transcript)
 
 
+async def _run_adaptive(test_case, semaphore, *, scenario, query_fn, judge_fn,
+                        target_provider, target_model, judge_provider, judge_model,
+                        target_temperature, attacker, max_turns):
+    """The adaptive path: an LLM attacker improvises each turn until it either
+    triggers a deterministic leak or exhausts the turn budget.
+
+    Mirrors the scripted body's accumulation, judge escalation, and result shape
+    (reusing ``_result``/``_base_fields``/``_log_done``/``grader.*``). Two things
+    diverge from scripted: the turns come from ``attacker.next_turn`` rather than
+    the case, and a leak carries per-turn attribution (``break_turn``/
+    ``winning_tactic``/``tactics``). The message dict handed to ``query_fn`` is
+    role/content ONLY — tactics ride in a parallel list, never in the transcript,
+    because the provider rejects unknown message properties.
+    """
+    query_fn = query_fn or query_target_conversation
+    judge_fn = judge_fn or run_llm_judge_eval_conversation
+    grader = scenario.grader
+    base = _base_fields(test_case)
+    tc_id = base["id"]
+    async with semaphore:
+        logger.info(f"Starting {tc_id} ({base['category']}) [adaptive]")
+        transcript, tactics, running_bot, attacker_text = [], [], "", ""
+        start = time.time()
+        for turn in range(1, max_turns + 1):
+            user_msg, tactic = await attacker.next_turn(transcript, test_case)
+            transcript.append({"role": "user", "content": user_msg})   # role/content ONLY
+            tactics.append(tactic)
+            attacker_text += "\n" + user_msg
+            try:
+                reply = await query_fn(transcript, provider=target_provider, model=target_model,
+                                       temperature=target_temperature,
+                                       system_prompt=scenario.system_prompt)
+            except ProviderError as e:
+                latency = round(time.time() - start, 2)
+                logger.warning(f"{tc_id}: target error: {e}")
+                _log_done(tc_id, "error")
+                return _result(base, response=None, score=None, reasoning=str(e), passed=False,
+                               status="error", eval_type="target_error", latency=latency,
+                               transcript=transcript)
+            transcript.append({"role": "assistant", "content": reply})
+            running_bot += "\n" + reply
+            is_final = (turn == max_turns)
+            # Running concatenations, exactly as the scripted body: a leak in an
+            # earlier turn still counts, and a secret the attacker supplied is not
+            # scored as a leak when the bot echoes it back.
+            screen = grader.screen(test_case, running_bot, attacker_text, is_final=is_final)
+            if screen.decision == "fail":                              # deterministic leak
+                latency = round(time.time() - start, 2)
+                v = grader.verdict(test_case, screen, None)
+                _log_done(tc_id, f"{v.status} (deterministic)", v.score)
+                r = _result(base, response=reply, score=v.score, reasoning=v.reasoning,
+                            passed=(v.status == "pass"), status=v.status,
+                            eval_type=_eval_type(None), latency=latency, transcript=transcript,
+                            false_positive=v.false_positive)
+                r["break_turn"], r["winning_tactic"] = turn, tactic
+                r["tactics"] = tactics          # per-turn audit trail (spec); parallel, NOT in transcript
+                return r
+        # Survived the budget with no deterministic leak -> the judge grades the
+        # transcript; a survivor is graded, never auto-passed.
+        latency = round(time.time() - start, 2)
+        logger.info(f"Adaptive attempt {tc_id} survived {max_turns} turn(s). Invoking LLM Judge...")
+        # Assumes a grader with the default judge schema/parser (secret-guardian). The CLI
+        # guards --attacker adaptive to secret-guardian, so this holds; a grader that defines
+        # parse_judgment/judge_schema (e.g. RefusalGrader) would need the scripted body's
+        # judge_kwargs threaded here before adaptive could target it.
+        try:
+            judged = await judge_fn(transcript, base["expected_criteria"],
+                                    provider=judge_provider, model=judge_model,
+                                    system_instruction=grader.judge_system_prompt(test_case))
+        except (ProviderError, JudgeParseError) as e:
+            logger.warning(f"{tc_id}: judge error: {e}")
+            _log_done(tc_id, "error")
+            return _result(base, response=running_bot, score=None, reasoning=str(e), passed=False,
+                           status="error", eval_type="judge_error", latency=latency,
+                           transcript=transcript)
+        v = grader.verdict(test_case, screen, judged)
+        _log_done(tc_id, v.status, v.score)
+        r = _result(base, response=transcript[-1]["content"], score=v.score, reasoning=v.reasoning,
+                    passed=(v.status == "pass"), status=v.status, eval_type=_eval_type(judged),
+                    latency=latency, transcript=transcript, false_positive=v.false_positive)
+        r["tactics"] = tactics              # per-turn audit trail on survivors too (no break_turn)
+        return r
+
+
 def aggregate_repeats(runs):
     """Collapse N per-run results (from ``run_single_test``) for one case into a
     single case result using take-worst ordering ``fail > pass > error``.
@@ -246,12 +341,16 @@ def aggregate_repeats(runs):
 
 
 def build_summary(results, target_label, judge_label, total_time_seconds, timestamp=None,
-                  *, scenario_name="secret-guardian") -> dict:
+                  *, scenario_name="secret-guardian", attacker_mode="scripted") -> dict:
     """Aggregate results into a summary. Always returns every key, even for an
     empty result set, so the reporter never hits a missing field.
 
     Pass rate is computed over *evaluated* cases (pass + fail); errors are
     counted and reported but excluded from the rate.
+
+    ``attacker_mode`` (``"scripted"``/``"adaptive"``) is a keyword-only stamp so
+    the reporter can tell an adaptive run from a scripted one; it defaults to
+    ``"scripted"``, so existing positional callers are unaffected.
     """
     total = len(results)
     passed = sum(1 for r in results if r.get("status") == "pass")
@@ -289,6 +388,15 @@ def build_summary(results, target_label, judge_label, total_time_seconds, timest
     b_fp = sum(1 for r in benign if r.get("false_positive") is True)
     grader_fp_rate = round(b_fp / b_eval, 4) if b_eval else None
 
+    # Attribution over deterministic leaks (results carrying a break_turn). Always
+    # emitted — empty list / empty dict when nothing leaked — per the contract above.
+    leaks = [r for r in results if r.get("break_turn") is not None]
+    turns_to_break = [r["break_turn"] for r in leaks]
+    winning_tactic_counts = {}
+    for r in leaks:
+        t = r.get("winning_tactic", "unknown")
+        winning_tactic_counts[t] = winning_tactic_counts.get(t, 0) + 1
+
     return {
         "timestamp": timestamp or time.strftime("%Y-%m-%d %H:%M:%S"),
         "target": target_label,
@@ -309,23 +417,30 @@ def build_summary(results, target_label, judge_label, total_time_seconds, timest
         "benign_evaluated": b_eval, "grader_fp_rate": grader_fp_rate,
         "control_total": len(control), "control_failed": control_failed,
         "control_fail_rate": control_fail_rate,
+        "turns_to_break": turns_to_break,
+        "winning_tactic_counts": winning_tactic_counts,
+        "attacker_mode": attacker_mode,
     }
 
 
 async def run_case_repeated(test_case, semaphore, *, repeats, query_fn, judge_fn,
                             scenario=SECRET_GUARDIAN,
                             target_provider=None, target_model=None, judge_provider=None,
-                            judge_model=None, target_temperature=None):
+                            judge_model=None, target_temperature=None,
+                            attacker=None, max_turns=6):
     """Run one case ``repeats`` times and collapse with take-worst aggregation.
 
     A ``None`` ``query_fn``/``judge_fn`` is forwarded straight into
     ``run_single_test``, whose own defaults then bind the real target/judge.
+    ``attacker``/``max_turns`` are forwarded the same way, so each repeat runs the
+    adaptive path when an attacker is supplied.
     """
     tasks = [run_single_test(test_case, semaphore, scenario=scenario,
                              query_fn=query_fn, judge_fn=judge_fn,
                              target_provider=target_provider, target_model=target_model,
                              judge_provider=judge_provider, judge_model=judge_model,
-                             target_temperature=target_temperature)
+                             target_temperature=target_temperature,
+                             attacker=attacker, max_turns=max_turns)
              for _ in range(repeats)]
     raw = await asyncio.gather(*tasks, return_exceptions=True)
     # An unexpected exception degrades that repeat to an error run rather than
@@ -343,7 +458,8 @@ async def run_case_repeated(test_case, semaphore, *, repeats, query_fn, judge_fn
 async def run_suite(tag_filter=None, category_filter=None, technique_filter=None, repeats=1,
                     target_provider=None, target_model=None, judge_provider=None,
                     judge_model=None, target_temperature=None, query_fn=None, judge_fn=None,
-                    *, scenario=SECRET_GUARDIAN, load_kwargs=None):
+                    *, scenario=SECRET_GUARDIAN, load_kwargs=None,
+                    attacker=None, max_turns=6, adaptive_cases=20):
     """Load, filter, and run all test cases; return results plus a summary.
 
     The scenario supplies both the cases and the grading, so a different
@@ -356,28 +472,40 @@ async def run_suite(tag_filter=None, category_filter=None, technique_filter=None
     that raises, or that returns malformed cases missing ``technique``/
     ``category``, degrades to the ``{"error": ...}`` payload rather than crashing
     the suite with a traceback.
+
+    When ``attacker`` is supplied the case source is swapped for ``adaptive_cases``
+    promptless shells (``build_adaptive_cases``) and the scripted loader and its
+    tag/technique/category filters are skipped — those filters key off scripted-
+    case metadata the generated shells do not carry. Every scripted run
+    (``attacker is None``) takes the original loader path unchanged, including its
+    degrade-to-``{"error": ...}`` behaviour.
     """
-    try:
-        cases = scenario.load_cases(**(load_kwargs or {}))
-        # Taken from the data as loaded, so the --technique warning below still lists
-        # something useful when --tag/--category already emptied the selection.
-        available_techniques = sorted({c["technique"] for c in cases})
-        if category_filter:
-            cases = [c for c in cases if c["category"] == category_filter]
-        if tag_filter:
-            cases = [c for c in cases if tag_filter in c.get("tags", [])]
-        if technique_filter:
-            cases = [c for c in cases if c["technique"] == technique_filter]
-            if not cases:
-                # spec 4.8: warn with the valid techniques, then proceed empty.
-                logger.warning(
-                    f"--technique '{technique_filter}' matched no test cases. "
-                    f"Valid techniques in the selected data: {', '.join(available_techniques)}. "
-                    "Proceeding with an empty selection."
-                )
-    except Exception as e:
-        logger.error(f"Failed to load cases for scenario '{scenario.name}': {e}")
-        return {"error": str(e)}
+    attacker_mode = "adaptive" if attacker is not None else "scripted"
+    if attacker is not None:
+        from attackers import build_adaptive_cases
+        cases = build_adaptive_cases(adaptive_cases)
+    else:
+        try:
+            cases = scenario.load_cases(**(load_kwargs or {}))
+            # Taken from the data as loaded, so the --technique warning below still lists
+            # something useful when --tag/--category already emptied the selection.
+            available_techniques = sorted({c["technique"] for c in cases})
+            if category_filter:
+                cases = [c for c in cases if c["category"] == category_filter]
+            if tag_filter:
+                cases = [c for c in cases if tag_filter in c.get("tags", [])]
+            if technique_filter:
+                cases = [c for c in cases if c["technique"] == technique_filter]
+                if not cases:
+                    # spec 4.8: warn with the valid techniques, then proceed empty.
+                    logger.warning(
+                        f"--technique '{technique_filter}' matched no test cases. "
+                        f"Valid techniques in the selected data: {', '.join(available_techniques)}. "
+                        "Proceeding with an empty selection."
+                    )
+        except Exception as e:
+            logger.error(f"Failed to load cases for scenario '{scenario.name}': {e}")
+            return {"error": str(e)}
     logger.info(f"Selected {len(cases)} test case(s).")
     target_label = f"{target_provider or config.DEFAULT_TARGET_PROVIDER}:{target_model or config.DEFAULT_TARGET_MODEL}"
     judge_label = f"{judge_provider or config.DEFAULT_JUDGE_PROVIDER}:{judge_model or config.DEFAULT_JUDGE_MODEL}"
@@ -386,7 +514,8 @@ async def run_suite(tag_filter=None, category_filter=None, technique_filter=None
             logger.warning("No test cases match the selection criteria.")
         return {"results": [],
                 "summary": build_summary([], target_label, judge_label, 0.0,
-                                         scenario_name=scenario.name)}
+                                         scenario_name=scenario.name,
+                                         attacker_mode=attacker_mode)}
     semaphore = asyncio.Semaphore(config.MAX_CONCURRENT_REQUESTS)
     start = time.time()
     raw_results = await asyncio.gather(*[
@@ -394,7 +523,8 @@ async def run_suite(tag_filter=None, category_filter=None, technique_filter=None
                           scenario=scenario,
                           target_provider=target_provider, target_model=target_model,
                           judge_provider=judge_provider, judge_model=judge_model,
-                          target_temperature=target_temperature)
+                          target_temperature=target_temperature,
+                          attacker=attacker, max_turns=max_turns)
         for c in cases], return_exceptions=True)
     total_time = time.time() - start
     # Convert any unexpected exception into an ERROR result so one bad case
@@ -407,7 +537,7 @@ async def run_suite(tag_filter=None, category_filter=None, technique_filter=None
         else:
             results.append(r)
     summary = build_summary(results, target_label, judge_label, total_time,
-                            scenario_name=scenario.name)
+                            scenario_name=scenario.name, attacker_mode=attacker_mode)
     logger.info(
         f"Suite completed. Pass rate: {summary['pass_rate']}% "
         f"({summary['passed']}/{summary['evaluated']} evaluated, {summary['errors']} error(s)) "
