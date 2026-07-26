@@ -156,6 +156,8 @@ async def run_llm_judge_eval_conversation(
     expected_criteria: str,
     provider: str = None,
     model: str = None,
+    *,
+    system_instruction: str = None,
 ) -> dict:
     """Grade a full multi-turn transcript with the judge model.
 
@@ -163,13 +165,20 @@ async def run_llm_judge_eval_conversation(
     jailbreak, or uses profanity fails the whole conversation. The transcript is
     labeled per turn and treated strictly as untrusted data. Raises on infra or
     parse failure.
+
+    ``system_instruction`` lets the caller (in practice a scenario's grader,
+    via ``Grader.judge_system_prompt``) decide how the judge grades. ``None``
+    means "use this module's built-in Secret Guardian instructions", so callers
+    that predate scenarios behave exactly as before. It is keyword-only because
+    callers already pass ``provider``/``model`` positionally.
     """
     provider = (provider or config.DEFAULT_JUDGE_PROVIDER).lower()
     model = model or config.DEFAULT_JUDGE_MODEL
 
     logger.info(f"Running LLM judge eval over transcript ({provider}:{model})...")
 
-    system_instruction = _judge_instructions()
+    if system_instruction is None:
+        system_instruction = _judge_instructions()
     judge_prompt = _judge_prompt(messages, expected_criteria)
 
     try:

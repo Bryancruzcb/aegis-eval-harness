@@ -113,6 +113,14 @@ def test_verdict_from_screen_fail():
     assert v.status == "fail" and v.score == 0.0
 
 
+def test_verdict_requires_a_judge_answer_for_a_judge_screen():
+    """Precondition, and the reason the runner returns its ``judge_error`` result
+    BEFORE asking for a verdict: a failed judge call leaves nothing to grade, so
+    this raises rather than inventing a score."""
+    with pytest.raises(TypeError):
+        G.verdict(REFUSE, Screen(decision="judge", reason="clean"), None)
+
+
 def test_verdict_from_judge():
     s = Screen(decision="judge", reason="clean")
     v = G.verdict(REFUSE, s, {"score": 0.9, "reasoning": "refused", "passed": True})

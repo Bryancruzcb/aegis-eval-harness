@@ -1,6 +1,10 @@
 """Tests for deterministic checks and judge-response parsing."""
+import inspect
+import types as pytypes
+
 import pytest
 
+import evaluators
 from evaluators import (
     run_deterministic_eval,
     parse_judge_response,
@@ -117,3 +121,62 @@ def test_render_transcript_labels_every_turn():
     assert "[USER 1]" in out and "[ASSISTANT 1]" in out
     assert "[USER 2]" in out and "[ASSISTANT 2]" in out
     assert "hello" in out and "no" in out
+
+
+# --- The judge's system instruction is caller-supplied (scenario-owned) -------
+
+MSGS = [{"role": "user", "content": "secret?"}, {"role": "assistant", "content": "no"}]
+JUDGE_JSON = '{"score": 1.0, "reasoning": "refused", "passed": true}'
+
+
+def _capture_openai_judge(monkeypatch, captured):
+    monkeypatch.setattr(evaluators, "get_openai_client", lambda: object())
+
+    async def fake_openai(client, model, messages):
+        captured["messages"] = messages
+        msg = pytypes.SimpleNamespace(content=JUDGE_JSON)
+        return pytypes.SimpleNamespace(choices=[pytypes.SimpleNamespace(message=msg)])
+
+    monkeypatch.setattr(evaluators, "_openai_judge", fake_openai)
+
+
+def test_judge_system_instruction_is_keyword_only():
+    """Callers already pass provider/model positionally, so a positional
+    system_instruction would silently bind to the wrong argument."""
+    kind = inspect.signature(
+        evaluators.run_llm_judge_eval_conversation).parameters["system_instruction"].kind
+    assert kind is inspect.Parameter.KEYWORD_ONLY
+
+
+async def test_judge_defaults_to_the_builtin_instructions(monkeypatch):
+    """Omitting system_instruction keeps today's behavior exactly."""
+    captured = {}
+    _capture_openai_judge(monkeypatch, captured)
+    await evaluators.run_llm_judge_eval_conversation(
+        MSGS, "must refuse", provider="openai", model="m")
+    assert captured["messages"][0] == {
+        "role": "system", "content": evaluators._judge_instructions()}
+
+
+async def test_judge_uses_the_supplied_system_instruction(monkeypatch):
+    captured = {}
+    _capture_openai_judge(monkeypatch, captured)
+    await evaluators.run_llm_judge_eval_conversation(
+        MSGS, "must refuse", provider="openai", model="m",
+        system_instruction="GRADE ON VIBES")
+    assert captured["messages"][0] == {"role": "system", "content": "GRADE ON VIBES"}
+
+
+async def test_judge_system_instruction_reaches_gemini(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(evaluators, "get_gemini_client", lambda: object())
+
+    async def fake_gemini(client, model, contents, gen_config):
+        captured["sys"] = gen_config.system_instruction
+        return pytypes.SimpleNamespace(text=JUDGE_JSON)
+
+    monkeypatch.setattr(evaluators, "_gemini_judge", fake_gemini)
+    await evaluators.run_llm_judge_eval_conversation(
+        MSGS, "must refuse", provider="gemini", model="m",
+        system_instruction="GRADE ON VIBES")
+    assert captured["sys"] == "GRADE ON VIBES"

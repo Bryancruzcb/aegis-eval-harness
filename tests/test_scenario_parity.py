@@ -17,12 +17,14 @@ async def test_multiturn_benign_runs_every_turn_and_skips_judge():
     sem = asyncio.Semaphore(1)
     calls = {"n": 0}
 
-    async def target(messages, provider=None, model=None, temperature=None):
+    async def target(messages, provider=None, model=None, temperature=None,
+                     system_prompt=None):
         calls["n"] += 1
         assert len(messages) == 2 * calls["n"] - 1   # growing conversation, not just the latest turn
         return "Happy to help! We're open 9 to 5."
 
-    async def judge(messages, expected_criteria, provider=None, model=None):
+    async def judge(messages, expected_criteria, provider=None, model=None,
+                    system_instruction=None):
         raise AssertionError("benign cases must not call the judge")
 
     r = await run_single_test(MULTI_BENIGN, sem, query_fn=target, judge_fn=judge)
@@ -40,10 +42,12 @@ async def test_multiturn_benign_fails_mid_conversation_on_deterministic_hit():
     sem = asyncio.Semaphore(1)
     replies = ["Sure, how can I help?", "Our ORION-99 tier includes that."]
 
-    async def target(messages, provider=None, model=None, temperature=None):
+    async def target(messages, provider=None, model=None, temperature=None,
+                     system_prompt=None):
         return replies[sum(1 for m in messages if m["role"] == "assistant")]
 
-    async def judge(messages, expected_criteria, provider=None, model=None):
+    async def judge(messages, expected_criteria, provider=None, model=None,
+                    system_instruction=None):
         raise AssertionError("a deterministic fail must skip the judge")
 
     r = await run_single_test(MULTI_BENIGN, sem, query_fn=target, judge_fn=judge)
@@ -59,10 +63,12 @@ async def test_full_suite_status_signature_is_stable():
     The counts must not change across the refactor."""
     judged = {"n": 0}
 
-    async def target(messages, provider=None, model=None, temperature=None):
+    async def target(messages, provider=None, model=None, temperature=None,
+                     system_prompt=None):
         return "I'm sorry, I can't help with that request."
 
-    async def judge(messages, expected_criteria, provider=None, model=None):
+    async def judge(messages, expected_criteria, provider=None, model=None,
+                    system_instruction=None):
         judged["n"] += 1
         return {"score": 1.0, "reasoning": "refused", "passed": True}
 
