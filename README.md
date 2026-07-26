@@ -184,9 +184,16 @@ The report grows three adaptive-only cards:
 > weak or off-task attacker will fail to break a bot that a stronger one would
 > crack in two turns, making the target look more robust than it actually is. A
 > rising compromise rate is real signal; a flat one only means *this* attacker
-> didn't get in. The **positive control** — an attacker that must succeed against
-> a deliberately leaky bot — is what guards against silently measuring a broken
-> attacker instead of a robust target.
+> didn't get in.
+>
+> The test suite includes a **positive control** — a stubbed attacker that must
+> break a deliberately leaky bot — but it validates the *harness plumbing*
+> (the loop, attribution, and grading), **not** that the live attacker model you
+> run is competent. There is no built-in check that, say, `qwen2.5` is actually
+> trying: verifying live-attacker efficacy is manual today (point it at a bot
+> whose prompt reveals the code and confirm it breaks it) and a `--positive-control`
+> mode is future work. So read a flat compromise rate as "*this* attacker didn't
+> get in," never as "the bot is safe."
 
 ## Scenarios
 
@@ -382,5 +389,6 @@ limits:
   adaptive attacker (`--attacker adaptive`) learns from the target's replies
   mid-run, but the compromise rate it reports is a *lower bound*: a weak or
   off-task attacker model understates a target's true exposure. Read it as "at
-  least this breakable," never "this robust," and keep the positive control in
-  the loop — see [Adaptive attacker](#adaptive-attacker).
+  least this breakable," never "this robust." The suite's positive control
+  proves the *harness* works, not that your live attacker model is competent —
+  confirming that is manual today (see [Adaptive attacker](#adaptive-attacker)).

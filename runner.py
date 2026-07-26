@@ -278,6 +278,10 @@ async def _run_adaptive(test_case, semaphore, *, scenario, query_fn, judge_fn,
         # transcript; a survivor is graded, never auto-passed.
         latency = round(time.time() - start, 2)
         logger.info(f"Adaptive attempt {tc_id} survived {max_turns} turn(s). Invoking LLM Judge...")
+        # Assumes a grader with the default judge schema/parser (secret-guardian). The CLI
+        # guards --attacker adaptive to secret-guardian, so this holds; a grader that defines
+        # parse_judgment/judge_schema (e.g. RefusalGrader) would need the scripted body's
+        # judge_kwargs threaded here before adaptive could target it.
         try:
             judged = await judge_fn(transcript, base["expected_criteria"],
                                     provider=judge_provider, model=judge_model,
