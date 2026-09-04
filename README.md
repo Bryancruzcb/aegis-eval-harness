@@ -14,7 +14,9 @@ is weak** instead of quoting a flattering number. Three things run on it:
   over-refusing harmless ones? Driven by **JailbreakBench** data fetched at runtime
   and never committed to the repo. Its two-stage grader is **calibrated against 300
   human labels**, and the accuracy is reported honestly: the grader is *judge-bound*
-  — MCC 0.20 with a free 7B local judge, climbing to ~0.80 with a GPT-4-class one.
+  — MCC 0.20 with a free 7B local judge, rising to 0.38 with a small hosted one. The
+  reference judges JailbreakBench ships reach 0.55-0.80 on the same rows; this grader
+  has not been measured with one of those.
 - **Adaptive attacker** — an LLM that reads the bot's replies and improvises
   social-engineering tactics turn by turn to extract the secret, reporting how often
   and how fast it breaks in (and honestly, that the number is only a lower bound).
