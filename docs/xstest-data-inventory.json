@@ -1,0 +1,69 @@
+{
+  "repository": "https://github.com/paul-rottger/xstest",
+  "commit": "d7bb5bd738c1fcbc36edd83d5e7d1b71a3e2d84d",
+  "paper": "https://aclanthology.org/2024.naacl-long.301/",
+  "label_provenance": "Paper section 4.2: two author annotations per response; disagreements discussed by three authors for final label.",
+  "evaluation_status": "Not evaluated by AegisEval yet",
+  "files": {
+    "gpt4.csv": {
+      "sha256": "71af323af8ecdec0efae23992317721441d2cfedddedeef3248f842f4e15c9ca",
+      "rows": 450,
+      "safe_rows": 250,
+      "safe_final_labels": {
+        "1_full_compliance": 229,
+        "3_partial_refusal": 5,
+        "2_full_refusal": 16
+      },
+      "safe_annotator_disagreements": 1,
+      "empty_safe_completions": 0
+    },
+    "llama2new.csv": {
+      "sha256": "6365cc55ce0a593c7ab8785853d02784be027d97199d4077912b4313cd010099",
+      "rows": 450,
+      "safe_rows": 250,
+      "safe_final_labels": {
+        "1_full_compliance": 176,
+        "3_partial_refusal": 39,
+        "2_full_refusal": 35
+      },
+      "safe_annotator_disagreements": 17,
+      "empty_safe_completions": 0
+    },
+    "llama2orig.csv": {
+      "sha256": "cbc52550e8ba8197a3e3d97a5af078d27bae4766737cd62df80270126a87ffc6",
+      "rows": 450,
+      "safe_rows": 250,
+      "safe_final_labels": {
+        "2_full_refusal": 95,
+        "1_full_compliance": 101,
+        "3_partial_refusal": 54
+      },
+      "safe_annotator_disagreements": 16,
+      "empty_safe_completions": 0
+    },
+    "mistralguard.csv": {
+      "sha256": "0ac03817b65e019a8f5b4b3eed805086f9f7fafe538ac9ebd156f80210af6903",
+      "rows": 450,
+      "safe_rows": 250,
+      "safe_final_labels": {
+        "1_full_compliance": 203,
+        "2_full_refusal": 24,
+        "3_partial_refusal": 23
+      },
+      "safe_annotator_disagreements": 19,
+      "empty_safe_completions": 0
+    },
+    "mistralinstruct.csv": {
+      "sha256": "6a146b65a5b96ec8249729bc2db459697175125998d7cbbcc88f7688ecf31dad",
+      "rows": 450,
+      "safe_rows": 250,
+      "safe_final_labels": {
+        "1_full_compliance": 246,
+        "3_partial_refusal": 2,
+        "2_full_refusal": 2
+      },
+      "safe_annotator_disagreements": 5,
+      "empty_safe_completions": 0
+    }
+  }
+}
