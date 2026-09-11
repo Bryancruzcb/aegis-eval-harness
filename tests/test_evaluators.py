@@ -4,13 +4,13 @@ import types as pytypes
 
 import pytest
 
-import evaluators
-from evaluators import (
-    run_deterministic_eval,
+import aegis_eval.core.evaluators as evaluators
+from aegis_eval.core.evaluators import (
     parse_judge_response,
     JudgeParseError,
     render_transcript,
 )
+from aegis_eval.harness.graders import run_deterministic_eval, SecretGuardianGrader
 
 
 # --- Deterministic secret-leak detection ---
@@ -157,13 +157,15 @@ async def test_default_system_instruction_uses_the_call_nonce(monkeypatch):
     captured = {}
     _capture_openai_judge(monkeypatch, captured)
     await evaluators.run_llm_judge_eval_conversation(
-        MSGS, "must refuse", provider="openai", model="m")
+        MSGS, "must refuse", provider="openai", model="m",
+        system_instruction=SecretGuardianGrader().judge_system_prompt({}))
     system = captured["messages"][0]["content"]
     user = captured["messages"][1]["content"]
     assert "[a7f3 USER n]" in system
     assert "[{delim} USER n]" not in system
     assert "[a7f3 USER n]" in user
-    assert system != evaluators._judge_instructions()
+    from aegis_eval.harness.graders import _judge_instructions
+    assert system != _judge_instructions()
 
 
 # --- The judge's system instruction is caller-supplied (scenario-owned) -------
@@ -192,12 +194,20 @@ def test_judge_system_instruction_is_keyword_only():
     assert kind is inspect.Parameter.KEYWORD_ONLY
 
 
-async def test_judge_defaults_to_the_builtin_instructions(monkeypatch):
-    """Omitting system_instruction keeps the builtin Secret Guardian rubric."""
+async def test_judge_requires_system_instruction(monkeypatch):
+    captured = {}
+    _capture_openai_judge(monkeypatch, captured)
+    with pytest.raises(ValueError, match="system_instruction is required"):
+        await evaluators.run_llm_judge_eval_conversation(
+            MSGS, "must refuse", provider="openai", model="m")
+
+
+async def test_secret_guardian_rubric_is_scenario_owned(monkeypatch):
     captured = {}
     _capture_openai_judge(monkeypatch, captured)
     await evaluators.run_llm_judge_eval_conversation(
-        MSGS, "must refuse", provider="openai", model="m")
+        MSGS, "must refuse", provider="openai", model="m",
+        system_instruction=SecretGuardianGrader().judge_system_prompt({}))
     system = captured["messages"][0]["content"]
     assert "impartial AI safety" in system
     assert "[{delim} USER n]" not in system
@@ -242,13 +252,14 @@ async def test_gemini_judge_uses_the_caller_response_schema(monkeypatch):
     scenario's judge is forced to answer the secret-guardian shape (score/passed)
     and its parser dies with 'substantive_help field required' — a live-only failure
     the default judge provider (gemini) hits on every escalated refusal case."""
-    from refusal_grader import RefusalJudgment, parse_refusal_judgment
+    from aegis_eval.harness.refusal_grader import RefusalJudgment, parse_refusal_judgment
     captured = {}
     _capture_gemini_schema(
         monkeypatch, captured,
         '{"refused": true, "substantive_help": 0, "reasoning": "clean refusal"}')
     out = await evaluators.run_llm_judge_eval_conversation(
         MSGS, "", provider="gemini", model="m",
+        system_instruction="x",
         parse=parse_refusal_judgment, response_schema=RefusalJudgment)
     assert captured["schema"] is RefusalJudgment
     assert out["refused"] is True and out["substantive_help"] == 0
@@ -259,7 +270,8 @@ async def test_gemini_judge_response_schema_defaults_to_evaluation_result(monkey
     captured = {}
     _capture_gemini_schema(monkeypatch, captured, JUDGE_JSON)
     await evaluators.run_llm_judge_eval_conversation(
-        MSGS, "must refuse", provider="gemini", model="m")
+        MSGS, "must refuse", provider="gemini", model="m",
+        system_instruction="x")
     assert captured["schema"] is evaluators.EvaluationResult
 
 
@@ -279,7 +291,8 @@ async def test_ollama_judge_sends_json_schema_for_evaluation_result(monkeypatch)
     captured = {}
     _capture_ollama_judge(monkeypatch, captured)
     await evaluators.run_llm_judge_eval_conversation(
-        MSGS, "must refuse", provider="ollama", model="m")
+        MSGS, "must refuse", provider="ollama", model="m",
+        system_instruction="x")
     fmt = captured["response_format"]
     assert fmt["type"] == "json_schema"
     assert fmt["json_schema"]["name"] == "EvaluationResult"
@@ -287,12 +300,13 @@ async def test_ollama_judge_sends_json_schema_for_evaluation_result(monkeypatch)
 
 
 async def test_ollama_judge_sends_caller_safety_schema(monkeypatch):
-    from safety_grader import SafetyGrader, SafetyJudgment
+    from aegis_eval.workflows.grader_quality.safety_grader import SafetyGrader, SafetyJudgment
     captured = {}
     reply = '{"reasoning":"x","harmful_assistance":false,"refused":true,"partial_refusal":false}'
     _capture_ollama_judge(monkeypatch, captured, reply)
     out = await evaluators.run_llm_judge_eval_conversation(
         MSGS, "", provider="ollama", model="m",
+        system_instruction="x",
         parse=SafetyGrader.parse_judgment, response_schema=SafetyJudgment)
     fmt = captured["response_format"]
     assert fmt["json_schema"]["name"] == "SafetyJudgment"
@@ -304,5 +318,6 @@ async def test_openai_judge_keeps_json_object(monkeypatch):
     captured = {}
     _capture_openai_judge(monkeypatch, captured)
     await evaluators.run_llm_judge_eval_conversation(
-        MSGS, "must refuse", provider="openai", model="m")
+        MSGS, "must refuse", provider="openai", model="m",
+        system_instruction="x")
     assert captured["response_format"] == {"type": "json_object"}

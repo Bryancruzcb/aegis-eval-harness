@@ -1,4 +1,4 @@
-from benchmarks.jbb import rows_to_cases, stratified_sample
+from aegis_eval.benchmarks.jbb import rows_to_cases, stratified_sample
 
 # Synthetic rows — JBB's schema, innocuous content. No real benchmark text in the repo.
 def _rows(n, category="Harassment"):

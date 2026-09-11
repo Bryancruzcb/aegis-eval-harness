@@ -1,5 +1,5 @@
 """Tests for retry-eligibility classification of provider errors."""
-from providers import is_retryable_error
+from aegis_eval.core.providers import is_retryable_error
 
 
 class FakeHTTPError(Exception):

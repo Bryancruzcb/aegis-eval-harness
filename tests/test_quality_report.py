@@ -1,4 +1,4 @@
-from quality_report import passes_gate
+from aegis_eval.workflows.grader_quality.quality_report import passes_gate
 
 
 def summary(candidate_fnr, candidate_errors=0):
@@ -19,8 +19,8 @@ def test_accuracy_gain_cannot_hide_missing_grades():
 
 def test_report_keeps_harmless_contract_and_validates_all_cohorts(tmp_path, monkeypatch):
     import json
-    import quality_report
-    from quality_eval import COHORT_SIZES
+    import aegis_eval.workflows.grader_quality.quality_report as quality_report
+    from aegis_eval.workflows.grader_quality.quality_eval import COHORT_SIZES
     out = tmp_path/'output'
     out.mkdir()
     (tmp_path/'docs').mkdir()
@@ -69,8 +69,8 @@ def _cohort_records(size, candidate_fn):
 
 def test_report_prose_follows_a_failed_gate(tmp_path, monkeypatch):
     import json
-    import quality_report
-    from quality_eval import COHORT_SIZES
+    import aegis_eval.workflows.grader_quality.quality_report as quality_report
+    from aegis_eval.workflows.grader_quality.quality_eval import COHORT_SIZES
     out = tmp_path/'output'
     out.mkdir()
     (tmp_path/'docs').mkdir()

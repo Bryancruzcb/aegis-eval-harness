@@ -1,6 +1,6 @@
 import pytest
 
-from quality_data import select_harmless, require_local
+from aegis_eval.workflows.grader_quality.quality_data import select_harmless, require_local
 
 
 def test_harmless_selection_excludes_seen_prompts_and_preserves_labels():

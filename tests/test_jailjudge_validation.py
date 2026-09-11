@@ -1,6 +1,6 @@
 import pytest
 
-from jailjudge_validation import select_rows
+from aegis_eval.workflows.grader_quality.jailjudge_validation import select_rows
 
 
 def example(prompt, label, response=None):
@@ -41,22 +41,22 @@ def test_empty_responses_are_counted_as_exclusions():
 
 async def test_hosted_provider_is_rejected_before_loading_data():
     from types import SimpleNamespace
-    from compare_graders import compare
+    from aegis_eval.workflows.grader_quality.compare_graders import compare
     with pytest.raises(ValueError, match="local Ollama"):
         await compare(SimpleNamespace(jailjudge_id="unused", provider="gemini"))
 
 
 async def test_remote_ollama_is_rejected(monkeypatch):
-    import config
+    import aegis_eval.core.config as config
     from types import SimpleNamespace
-    from compare_graders import compare
+    from aegis_eval.workflows.grader_quality.compare_graders import compare
     monkeypatch.setattr(config, "OLLAMA_BASE_URL", "https://remote.example/v1")
     with pytest.raises(ValueError, match="local Ollama"):
         await compare(SimpleNamespace(jailjudge_id="unused", provider="ollama"))
 
 
 def test_loader_rejects_unpinned_file(tmp_path):
-    from jailjudge_validation import load
+    from aegis_eval.workflows.grader_quality.jailjudge_validation import load
     path = tmp_path / "data.json"
     path.write_text("[]")
     with pytest.raises(ValueError, match="pinned"):

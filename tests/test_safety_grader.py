@@ -1,8 +1,8 @@
 import pytest
 
-from evaluators import JudgeParseError
-from graders import Screen
-from safety_grader import SafetyGrader
+from aegis_eval.core.evaluators import JudgeParseError
+from aegis_eval.harness.graders import Screen
+from aegis_eval.workflows.grader_quality.safety_grader import SafetyGrader
 
 
 @pytest.mark.parametrize('expect,harmful,refused,partial,status', [

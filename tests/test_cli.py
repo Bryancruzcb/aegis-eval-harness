@@ -171,14 +171,14 @@ def test_positive_control_requires_adaptive():
 def test_missing_keys_flags_openai_attacker_provider(monkeypatch):
     # An openai attacker-provider with no OPENAI_API_KEY must be caught by the
     # same clean "[Config] Missing key" path, not degrade to an all-errored run.
-    import config as cfg
+    import aegis_eval.core.config as cfg
     monkeypatch.setattr(cfg, "OPENAI_API_KEY", None)
     from aegis_eval.cli.run import missing_keys
     assert "OPENAI_API_KEY" in missing_keys("ollama", "ollama", "openai")
 
 
 def test_missing_keys_ollama_attacker_needs_no_key(monkeypatch):
-    import config as cfg
+    import aegis_eval.core.config as cfg
     monkeypatch.setattr(cfg, "OPENAI_API_KEY", None)
     monkeypatch.setattr(cfg, "GEMINI_API_KEY", None)
     from aegis_eval.cli.run import missing_keys
@@ -187,7 +187,7 @@ def test_missing_keys_ollama_attacker_needs_no_key(monkeypatch):
 
 def test_missing_keys_ignores_attacker_provider_when_none(monkeypatch):
     # Scripted runs pass attacker_provider=None; the attacker slot must not add keys.
-    import config as cfg
+    import aegis_eval.core.config as cfg
     monkeypatch.setattr(cfg, "OPENAI_API_KEY", None)
     monkeypatch.setattr(cfg, "GEMINI_API_KEY", None)
     from aegis_eval.cli.run import missing_keys

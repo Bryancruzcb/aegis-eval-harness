@@ -3,7 +3,7 @@ the Secret-Guardian passcode, choosing a social-engineering tactic each turn."""
 import json
 import logging
 
-from providers import (
+from aegis_eval.core.providers import (
     ProviderError,
     retryable,
     get_ollama_client,

@@ -1,15 +1,34 @@
 """Build the three-judge report from completed local checkpoints; no API calls."""
 import hashlib
 import json
+import math
 from pathlib import Path
 import statistics
 
-import compare_graders as comparison
-import hosted_comparison_37 as hosted
+import aegis_eval.core.config as config
+import aegis_eval.workflows.grader_quality.compare_graders as comparison
+
+HOSTED_DIR = config.BASE_DIR / "output" / "hosted-comparison"
+MODEL = "gemini-3.7-flash"
+CAP = 5.0
+
+
+def accounted_cost(attempt):
+    estimate = attempt.get("estimated_usd")
+    if isinstance(estimate, (int, float)) and math.isfinite(estimate) and estimate > attempt["reserved_usd"]:
+        return estimate
+    usage = attempt.get("usage") or {}
+    counters = [usage.get("prompt_token_count"), usage.get("total_token_count")]
+    outputs = [usage.get("candidates_token_count", 0), usage.get("thoughts_token_count", 0)]
+    complete = (all(type(n) is int and n >= 0 for n in counters + outputs)
+                and counters[1] == counters[0] + sum(outputs))
+    if complete and isinstance(estimate, (int, float)) and math.isfinite(estimate) and estimate >= 0:
+        return estimate
+    return attempt["reserved_usd"]
 
 
 def build_report():
-    paths = [hosted.OUTPUT.with_name('hosted-judge-dev.json'), hosted.OUTPUT]
+    paths = [HOSTED_DIR / "hosted-judge-dev.json", HOSTED_DIR / "gemini-3.7-flash-dev.json"]
     older, newer = [json.loads(p.read_text()) for p in paths]
     for payload in (older, newer):
         if payload['status'] not in ('complete', 'complete_with_errors') or len(payload['records']) != 150:
@@ -32,7 +51,7 @@ def build_report():
         summary['variants'][name]['successful_judge_mean_seconds'] = statistics.mean(
             r['variants'][name]['seconds'] for r in records
             if r['variants'][name]['stage'] == 'judge' and 'prediction' in r['variants'][name])
-    current_attempts = [a for a in newer['attempts'] if a['model'] == hosted.MODEL]
+    current_attempts = [a for a in newer['attempts'] if a['model'] == MODEL]
     pairwise = comparison.summarize(records, [names[0], names[2]])
     local = pairwise['variants'][names[0]]['common_metrics']
     candidate = pairwise['variants'][names[2]]['common_metrics']
@@ -40,10 +59,10 @@ def build_report():
         'identity': newer['identity'], 'qwen_vs_37': pairwise,
         'source_checkpoints': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in paths},
         'unresolved_rows': {n: [r['row'] for r in records if 'error' in r['variants'][n]] for n in names},
-        'cost': {'authorized_cap_usd': hosted.CAP,
+        'cost': {'authorized_cap_usd': CAP,
             'known_usage_estimated_usd_all_trials': sum(a.get('estimated_usd') or 0 for a in newer['attempts']),
             'known_usage_estimated_usd_37': sum(a.get('estimated_usd') or 0 for a in current_attempts),
-            'accounted_usd_all_trials': sum(map(hosted.accounted_cost, newer['attempts'])),
+            'accounted_usd_all_trials': sum(map(accounted_cost, newer['attempts'])),
             'attempts_without_usage_37': sum(not a.get('usage') for a in current_attempts)},
         'observed_37_model_versions': sorted({a['model_version'] for a in current_attempts if a.get('model_version')}),
         'passes_development_gate': (pairwise['common_resolved'] == 150 and candidate['mcc'] > local['mcc']

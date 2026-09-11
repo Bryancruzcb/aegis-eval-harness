@@ -21,7 +21,7 @@ from tenacity import (
     before_sleep_log,
 )
 
-import config
+import aegis_eval.core.config as config
 
 logger = logging.getLogger("AegisEval.Providers")
 

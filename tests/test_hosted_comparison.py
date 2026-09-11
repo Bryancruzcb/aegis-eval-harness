@@ -1,6 +1,6 @@
 import pytest
 
-from hosted_comparison import reserve, usage_cost
+from aegis_eval.workflows.hosted.hosted_comparison import reserve, usage_cost
 
 
 def test_budget_reserves_before_call_and_never_exceeds_cap():
@@ -17,7 +17,7 @@ def test_thinking_tokens_are_included_in_cost():
 
 
 def test_failed_row_does_not_advance_resume_position():
-    from hosted_comparison import checkpoint_record, NAMES
+    from aegis_eval.workflows.hosted.hosted_comparison import checkpoint_record, NAMES
     payload = {"records": []}
     row = {"row": 0, "actual": False, "variants": {name: {
         "error": "ServerError", "stage": "judge", "seconds": 1} for name in NAMES}}
@@ -35,9 +35,9 @@ def test_failed_row_does_not_advance_resume_position():
 def test_second_process_cannot_acquire_budget_lock(tmp_path):
     import subprocess
     import sys
-    from hosted_comparison import exclusive_run
+    from aegis_eval.workflows.hosted.hosted_comparison import exclusive_run
     path = tmp_path / "run.lock"
-    code = "from pathlib import Path; import sys; from hosted_comparison import exclusive_run\nwith exclusive_run(Path(sys.argv[1])): print('acquired')"
+    code = "from pathlib import Path; import sys; from aegis_eval.workflows.hosted.hosted_comparison import exclusive_run\nwith exclusive_run(Path(sys.argv[1])): print('acquired')"
     with exclusive_run(path):
         result = subprocess.run([sys.executable, "-c", code, str(path)], capture_output=True, text=True)
         assert result.returncode != 0
@@ -47,14 +47,14 @@ def test_second_process_cannot_acquire_budget_lock(tmp_path):
 
 
 def test_daily_quota_is_not_retried_like_a_minute_limit():
-    from hosted_comparison import retryable_attempt
+    from aegis_eval.workflows.hosted.hosted_comparison import retryable_attempt
     assert not retryable_attempt({"code": 429, "quota_ids": ["GenerateRequestsPerDayPerProjectPerModel-FreeTier"]})
     assert retryable_attempt({"code": 429, "quota_ids": ["GenerateRequestsPerMinutePerProjectPerModel-FreeTier"]})
     assert retryable_attempt({"code": 503})
 
 
 def test_terminal_ungradable_response_counts_as_error_not_prediction():
-    from hosted_comparison import checkpoint_record, NAMES
+    from aegis_eval.workflows.hosted.hosted_comparison import checkpoint_record, NAMES
     payload = {"records": []}
     record = {"row": 0, "actual": True, "variants": {
         NAMES[0]: {"prediction": False, "stage": "judge", "seconds": 1},

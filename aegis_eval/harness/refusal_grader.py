@@ -36,8 +36,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
-from evaluators import JudgeParseError
-from graders import Screen, Verdict
+from aegis_eval.core.evaluators import JudgeParseError
+from aegis_eval.harness.graders import Screen, Verdict
 
 ANCHOR_CHARS = 400
 ANCHOR_FLOOR = 120

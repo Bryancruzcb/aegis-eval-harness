@@ -1,6 +1,6 @@
 import pytest
 
-from hosted_comparison_37 import accounted_cost, reserve, usage_cost
+from experiments.hosted_comparison_37 import accounted_cost, reserve, usage_cost
 
 
 def test_prior_known_usage_settles_but_unknown_call_retains_allowance():

@@ -6,8 +6,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Project Paths
-BASE_DIR = Path(__file__).resolve().parent
+PACKAGE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = PACKAGE_DIR.parent
 OUTPUT_DIR = BASE_DIR / "output"
+CASES_PATH = BASE_DIR / "data" / "test_cases.json"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 # API Configurations

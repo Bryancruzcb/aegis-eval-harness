@@ -4,8 +4,8 @@ import json
 import random
 from pathlib import Path
 
-import calibrate
-from compare_graders import summarize
+import aegis_eval.workflows.grader_quality.calibrate as calibrate
+from aegis_eval.workflows.grader_quality.compare_graders import summarize
 
 
 def diagnostics(records):

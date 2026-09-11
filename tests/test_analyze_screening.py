@@ -1,4 +1,4 @@
-from analyze_screening import diagnostics
+from aegis_eval.workflows.grader_quality.analyze_screening import diagnostics
 
 
 def row(actual, before, after, stage="screen"):
@@ -30,7 +30,7 @@ def test_diagnostics_does_not_treat_judge_error_as_a_correction():
 
 
 def test_paired_intervals_preserve_identical_predictions():
-    from analyze_screening import paired_intervals
+    from aegis_eval.workflows.grader_quality.analyze_screening import paired_intervals
     records = [{"actual": actual, "variants": {
         name: {"prediction": actual} for name in ("two_stage", "judge_only")}}
         for actual in (True, False, True, False)]

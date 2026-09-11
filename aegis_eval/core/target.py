@@ -10,8 +10,8 @@ import logging
 
 from google.genai import types
 
-import config
-from providers import (
+import aegis_eval.core.config as config
+from aegis_eval.core.providers import (
     ProviderError,
     retryable,
     get_gemini_client,

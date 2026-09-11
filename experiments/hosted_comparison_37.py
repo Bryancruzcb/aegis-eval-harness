@@ -1,4 +1,4 @@
-"""Historical $5 Gemini comparison on JBB-dev under the old refusal contract.
+"""Historical Gemini 3.7 comparison on JBB-dev under the old refusal contract.
 
 Not the SafetyGrader experiment. Do not mix its MCC with
 `docs/grader-quality-results.json`.
@@ -7,24 +7,26 @@ import asyncio
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 from pathlib import Path
 
 from google import genai
 from google.genai import types
 
-import calibrate
-import compare_graders as comparison
-import config
+import aegis_eval.workflows.grader_quality.calibrate as calibrate
+import aegis_eval.workflows.grader_quality.compare_graders as comparison
+import aegis_eval.core.config as config
 from aegis_eval.core.lock import exclusive_run
-from evaluators import _judge_prompt
+from aegis_eval.core.evaluators import _judge_prompt
 
-MODEL = "gemini-3.5-flash"
+MODEL = "gemini-3.7-flash"
 CAP = 5.0
 MAX_OUTPUT = 2048
-INPUT_RATE = 1.5 / 1_000_000
-OUTPUT_RATE = 9.0 / 1_000_000
+INPUT_RATE = 0.75 / 1_000_000
+OUTPUT_RATE = 3.75 / 1_000_000
+PRIOR_LEDGER = config.BASE_DIR / "output" / "hosted-comparison" / "hosted-judge-dev.json"
 OUTPUT = (config.BASE_DIR / "output" / "hosted-comparison" /
-          comparison.PROVENANCE_VERSION / "hosted-judge-dev.json")
+          comparison.PROVENANCE_VERSION / "gemini-3.7-flash-dev.json")
 SOURCE = config.BASE_DIR / "output/false-positive-ablation/refusal_grader_baseline.py"
 NAMES = ["local_two_stage", "hosted_two_stage"]
 
@@ -36,8 +38,22 @@ def checkpoint_record(payload, record, *, terminal=False):
     return not failed
 
 
+def accounted_cost(attempt):
+    estimate = attempt.get("estimated_usd")
+    if isinstance(estimate, (int, float)) and math.isfinite(estimate) and estimate > attempt["reserved_usd"]:
+        return estimate
+    usage = attempt.get("usage") or {}
+    counters = [usage.get("prompt_token_count"), usage.get("total_token_count")]
+    outputs = [usage.get("candidates_token_count", 0), usage.get("thoughts_token_count", 0)]
+    complete = (all(type(n) is int and n >= 0 for n in counters + outputs)
+                and counters[1] == counters[0] + sum(outputs))
+    if complete and isinstance(estimate, (int, float)) and math.isfinite(estimate) and estimate >= 0:
+        return estimate
+    return attempt["reserved_usd"]
+
+
 def reserve(payload, row, dollars):
-    if dollars <= 0 or sum(a["reserved_usd"] for a in payload["attempts"]) + dollars > CAP:
+    if dollars <= 0 or sum(accounted_cost(a) for a in payload["attempts"]) + dollars > CAP:
         raise ValueError("Authorized budget would be exceeded")
     attempt = {"row": row, "reserved_usd": dollars, "status": "reserved"}
     payload["attempts"].append(attempt)
@@ -69,7 +85,7 @@ async def run():
     if source_hash != baseline["sources"]["two_stage"]["sha256"]:
         raise ValueError("Frozen rubric differs from local baseline")
     identity = {"model": MODEL, "source_sha256": source_hash,
-                "runner_sha256": comparison.module_digest("hosted_comparison"),
+                "runner_sha256": comparison.module_digest("experiments.hosted_comparison_37"),
                 "provenance_version": comparison.PROVENANCE_VERSION,
                 "dependencies": comparison.execution_identity(), "budget_usd": CAP,
                 "input_rate_per_million": INPUT_RATE * 1_000_000, "output_rate_per_million": OUTPUT_RATE * 1_000_000,
@@ -78,17 +94,21 @@ async def run():
                 "local_baseline_sha256": hashlib.sha256((config.BASE_DIR / "output/false-positive-ablation/qwen-dev.json").read_bytes()).hexdigest()}
     payload = {"identity": identity, "started_utc": datetime.now(timezone.utc).isoformat(),
                "status": "running", "attempts": [], "records": []}
-    previous_path = OUTPUT.with_name("gemini-3.8-flash-dev.json")
-    if not OUTPUT.exists() and previous_path.exists():
+    previous_path = PRIOR_LEDGER
+    if not OUTPUT.exists():
+        if not previous_path.exists():
+            raise ValueError("Prior spending ledger is required")
         previous = json.loads(previous_path.read_text())
+        if previous["status"] not in ("complete", "complete_with_errors"):
+            raise ValueError("Prior comparison must be finished")
         payload["attempts"] = previous["attempts"]
-        for attempt in payload["attempts"]:
-            attempt["model"] = "gemini-3.8-flash"
-        payload["prior_trial"] = {"model": "gemini-3.8-flash", "path": str(previous_path),
+        payload["prior_trial"] = {"model": "gemini-3.5-flash", "path": str(previous_path),
                                   "sha256": hashlib.sha256(previous_path.read_bytes()).hexdigest(),
-                                  "reason": "Interrupted after repeated capacity errors; all reservations retained"}
+                                  "reason": "Continued authorized comparison; prior ledger includes 3.8. Known token costs settle reservations; unknown usage keeps full reservation. Original records preserved."}
     if OUTPUT.exists():
         payload = json.loads(OUTPUT.read_text())
+        if hashlib.sha256(previous_path.read_bytes()).hexdigest() != payload["prior_trial"]["sha256"]:
+            raise ValueError("Prior spending ledger changed; reconcile before resuming")
         if payload["identity"] != identity:
             raise ValueError("Checkpoint configuration changed; do not reset the spending ledger")
         if payload["status"] in ("complete", "complete_with_errors"):
@@ -167,11 +187,13 @@ async def run():
     payload["finished_utc"] = datetime.now(timezone.utc).isoformat()
     comparison.save(OUTPUT, payload)
     print(json.dumps({"status": payload["status"], "summary": payload["summary"],
+                      "accounted_usd": sum(accounted_cost(a) for a in payload["attempts"]),
                       "reserved_usd": sum(a["reserved_usd"] for a in payload["attempts"]),
                       "usage_estimated_usd": sum(a.get("estimated_usd") or 0 for a in payload["attempts"])}, indent=2))
     return 0 if payload["status"] == "complete" else 1
 
 
 if __name__ == "__main__":
-    with exclusive_run(OUTPUT.with_suffix(".lock")):
-        raise SystemExit(asyncio.run(run()))
+    with exclusive_run(OUTPUT.with_name("hosted-judge-dev.lock")):
+        with exclusive_run(OUTPUT.with_suffix(".lock")):
+            raise SystemExit(asyncio.run(run()))

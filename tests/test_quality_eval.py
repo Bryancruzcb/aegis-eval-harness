@@ -1,25 +1,25 @@
 import pytest
 
-from providers import ProviderError
-from quality_eval import check_resume, check_resume_identity, classify_error
+from aegis_eval.core.providers import ProviderError
+from aegis_eval.workflows.grader_quality.quality_eval import check_resume, check_resume_identity, classify_error
 
 
 def test_different_candidate_across_cohorts_is_rejected():
-    from quality_eval import validate_cohort_set
+    from aegis_eval.workflows.grader_quality.quality_eval import validate_cohort_set
     with pytest.raises(ValueError, match='Cross-cohort'):
         validate_cohort_set({'dev': {'identity':{'model':'a','cohort':'dev'}},
                              'fresh': {'identity':{'model':'b','cohort':'fresh'}}})
 
 
 def test_partial_cohorts_cannot_be_reported_as_complete():
-    from quality_eval import validate_cohort_set
+    from aegis_eval.workflows.grader_quality.quality_eval import validate_cohort_set
     with pytest.raises(ValueError, match='Missing cohort'):
         validate_cohort_set({'dev': {'identity':{'model':'a','cohort':'dev'}}}, complete=True)
 
 
 def test_resume_rejects_changed_identity_and_rows():
     rows = [{'goal':'x'}]
-    from compare_graders import row_hash
+    from aegis_eval.workflows.grader_quality.compare_graders import row_hash
     prior = {'identity': {'model':'a'}, 'records':[{'row':0, 'row_sha256':row_hash(rows[0])}]}
     check_resume(prior, {'model':'a'}, rows)
     with pytest.raises(ValueError):
@@ -29,8 +29,8 @@ def test_resume_rejects_changed_identity_and_rows():
 
 
 async def test_judge_error_does_not_become_a_prediction(monkeypatch):
-    import quality_eval
-    from safety_grader import SafetyGrader
+    import aegis_eval.workflows.grader_quality.quality_eval as quality_eval
+    from aegis_eval.workflows.grader_quality.safety_grader import SafetyGrader
     async def broken(*args, **kwargs):
         raise RuntimeError('unavailable')
     monkeypatch.setattr(quality_eval, 'run_llm_judge_eval_conversation', broken)
@@ -40,8 +40,8 @@ async def test_judge_error_does_not_become_a_prediction(monkeypatch):
 
 
 async def test_harmless_evaluation_uses_benign_prompt_and_refusal_contract(monkeypatch):
-    import quality_eval
-    from safety_grader import SafetyGrader, BENIGN_PROMPT
+    import aegis_eval.workflows.grader_quality.quality_eval as quality_eval
+    from aegis_eval.workflows.grader_quality.safety_grader import SafetyGrader, BENIGN_PROMPT
     async def judge(*args, **kwargs):
         assert kwargs['provider'] == 'ollama'
         assert kwargs['system_instruction'] == BENIGN_PROMPT
@@ -77,8 +77,8 @@ def _full_identity():
 
 
 def test_quality_eval_writes_under_provenance_version():
-    from compare_graders import PROVENANCE_VERSION
-    from quality_eval import OUT
+    from aegis_eval.workflows.grader_quality.compare_graders import PROVENANCE_VERSION
+    from aegis_eval.workflows.grader_quality.quality_eval import OUT
     assert OUT.name == PROVENANCE_VERSION
     assert OUT.parent.name == "grader-quality"
 
@@ -111,7 +111,7 @@ def test_complete_checkpoint_rejects_decode_file_hash_change():
 
 
 def test_align_does_not_rewrite_complete_checkpoint():
-    from quality_eval import align_checkpoint
+    from aegis_eval.workflows.grader_quality.quality_eval import align_checkpoint
     prior = _full_identity()
     payload = {'status': 'complete', 'identity': prior}
     expected = _full_identity()
@@ -152,8 +152,8 @@ def test_prompt_hash_change_fails_resume_after_recorded():
 
 
 async def test_parse_error_retries_then_succeeds(monkeypatch):
-    import quality_eval
-    from safety_grader import SafetyGrader
+    import aegis_eval.workflows.grader_quality.quality_eval as quality_eval
+    from aegis_eval.workflows.grader_quality.safety_grader import SafetyGrader
     calls = {'n': 0}
     valid = '{"reasoning":"ok","harmful_assistance":false,"refused":false,"partial_refusal":false}'
 
@@ -175,8 +175,8 @@ async def test_parse_error_retries_then_succeeds(monkeypatch):
 
 
 async def test_three_parse_failures_become_an_error(monkeypatch):
-    import quality_eval
-    from safety_grader import SafetyGrader
+    import aegis_eval.workflows.grader_quality.quality_eval as quality_eval
+    from aegis_eval.workflows.grader_quality.safety_grader import SafetyGrader
     calls = {'n': 0}
 
     async def always_bad(*args, **kwargs):
@@ -194,8 +194,8 @@ async def test_three_parse_failures_become_an_error(monkeypatch):
 
 
 async def test_provider_error_does_not_retry(monkeypatch):
-    import quality_eval
-    from safety_grader import SafetyGrader
+    import aegis_eval.workflows.grader_quality.quality_eval as quality_eval
+    from aegis_eval.workflows.grader_quality.safety_grader import SafetyGrader
     calls = {'n': 0}
 
     async def boom(*args, **kwargs):
@@ -212,8 +212,8 @@ async def test_provider_error_does_not_retry(monkeypatch):
 
 
 def test_error_taxonomy_covers_the_named_classes():
-    from evaluators import JudgeParseError
-    from quality_eval import ERROR_CLASSES
+    from aegis_eval.core.evaluators import JudgeParseError
+    from aegis_eval.workflows.grader_quality.quality_eval import ERROR_CLASSES
     assert classify_error(JudgeParseError('x')) == 'JudgeParseError'
     assert classify_error(ProviderError('x')) == 'ProviderError'
     assert classify_error(TimeoutError()) == 'TimeoutError'
@@ -222,7 +222,7 @@ def test_error_taxonomy_covers_the_named_classes():
 
 
 def test_failed_record_has_top_level_error_class():
-    from quality_eval import annotate_failed_record
+    from aegis_eval.workflows.grader_quality.quality_eval import annotate_failed_record
     record = {'row': 48, 'row_sha256': 'h', 'actual': True, 'variants': {
         'legacy': {'prediction': False, 'stage': 'judge', 'seconds': 1},
         'candidate': {'error': 'JudgeParseError', 'error_class': 'JudgeParseError',
@@ -233,7 +233,7 @@ def test_failed_record_has_top_level_error_class():
 
 
 def test_schema1_failed_records_gain_error_class_without_rewriting_source():
-    from quality_eval import failed_records
+    from aegis_eval.workflows.grader_quality.quality_eval import failed_records
     payload = {'failed_records': [
         {'row': 48, 'variants': {
             'legacy': {'prediction': True, 'stage': 'judge', 'seconds': 1},
@@ -250,7 +250,7 @@ def test_schema1_failed_records_gain_error_class_without_rewriting_source():
 
 
 def test_failed_records_schema2_keeps_recorded_class():
-    from quality_eval import FAILED_RECORDS_SCHEMA, failed_records
+    from aegis_eval.workflows.grader_quality.quality_eval import FAILED_RECORDS_SCHEMA, failed_records
     payload = {
         'failed_records_schema': FAILED_RECORDS_SCHEMA,
         'failed_records': [

@@ -2,9 +2,9 @@ import inspect
 
 import pytest
 
-from evaluators import JudgeParseError
-from graders import Screen
-from refusal_grader import (
+from aegis_eval.core.evaluators import JudgeParseError
+from aegis_eval.harness.graders import Screen
+from aegis_eval.harness.refusal_grader import (
     RefusalGrader,
     RefusalJudgment,
     normalize,

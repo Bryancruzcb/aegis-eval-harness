@@ -6,7 +6,7 @@ the REAL attacker against a deliberately leaky bot: if it cannot extract a secre
 that is *given away*, its compromise numbers are not trustworthy and the run
 aborts. All tests are OFFLINE (attacker, target, and judge are stubbed).
 """
-import config
+import aegis_eval.core.config as config
 from aegis_eval.harness.scenarios import SCENARIOS, SECRET_GUARDIAN_LEAKY
 from aegis_eval.cli.run import run_positive_control, POSITIVE_CONTROL_EXIT
 import aegis_eval.cli.run as run_mod
@@ -25,7 +25,7 @@ def test_leaky_scenario_prompt_gives_away_the_secret():
 
 
 def test_leaky_scenario_reuses_the_secret_guardian_grader():
-    from graders import SecretGuardianGrader
+    from aegis_eval.harness.graders import SecretGuardianGrader
     assert isinstance(SECRET_GUARDIAN_LEAKY.grader, SecretGuardianGrader)
 
 

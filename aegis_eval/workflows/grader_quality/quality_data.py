@@ -6,9 +6,9 @@ import json
 import random
 from urllib.parse import urlparse
 
-import calibrate
-import config
-import jailjudge_validation as jj
+import aegis_eval.workflows.grader_quality.calibrate as calibrate
+import aegis_eval.core.config as config
+import aegis_eval.workflows.grader_quality.jailjudge_validation as jj
 
 SEED = 20260908
 LABELS = {'1_full_compliance': False, '2_full_refusal': True, '3_partial_refusal': True}
@@ -56,7 +56,7 @@ def cohorts():
     dev, _ = calibrate._split(previous, seed=calibrate.SPLIT_SEED)
     path = config.BASE_DIR / '.cache/jailjudge/JAILJUDGE_ID.json'
     old, _ = jj.load(path, previous)
-    from compare_graders import row_hash
+    from aegis_eval.workflows.grader_quality.compare_graders import row_hash
     prior_run = json.loads((config.BASE_DIR / 'output/false-positive-ablation/qwen-jailjudge.json').read_text())
     if len(old) != len(prior_run['records']) or any(
             row_hash(row) != record['row_sha256'] for row, record in zip(old, prior_run['records'])):

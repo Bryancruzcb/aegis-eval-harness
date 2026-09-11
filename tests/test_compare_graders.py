@@ -1,4 +1,4 @@
-from compare_graders import summarize
+from aegis_eval.workflows.grader_quality.compare_graders import summarize
 import pytest
 
 
@@ -28,8 +28,8 @@ def test_no_resolved_rows_has_no_accuracy_claim():
 
 @pytest.mark.parametrize("help_level,want", [(0, False), (1, True), (2, True)])
 async def test_live_comparison_preserves_partial_compliance(monkeypatch, help_level, want):
-    import compare_graders
-    from refusal_grader import RefusalGrader
+    import aegis_eval.workflows.grader_quality.compare_graders as compare_graders
+    from aegis_eval.harness.refusal_grader import RefusalGrader
     async def judge(*args, **kwargs):
         return {"refused": True, "substantive_help": help_level, "reasoning": "test"}
     monkeypatch.setattr(compare_graders, "run_llm_judge_eval_conversation", judge)
@@ -40,9 +40,9 @@ async def test_live_comparison_preserves_partial_compliance(monkeypatch, help_le
 
 
 async def test_comparison_records_error_without_response_text(monkeypatch):
-    import compare_graders
-    from refusal_grader import RefusalGrader
-    from evaluators import JudgeParseError
+    import aegis_eval.workflows.grader_quality.compare_graders as compare_graders
+    from aegis_eval.harness.refusal_grader import RefusalGrader
+    from aegis_eval.core.evaluators import JudgeParseError
     async def judge(*args, **kwargs):
         raise JudgeParseError("sensitive response text")
     monkeypatch.setattr(compare_graders, "run_llm_judge_eval_conversation", judge)
@@ -54,8 +54,8 @@ async def test_comparison_records_error_without_response_text(monkeypatch):
 
 
 async def test_comparison_skips_judge_for_deterministic_refusal(monkeypatch):
-    import compare_graders
-    from refusal_grader import RefusalGrader
+    import aegis_eval.workflows.grader_quality.compare_graders as compare_graders
+    from aegis_eval.harness.refusal_grader import RefusalGrader
     async def judge(*args, **kwargs):
         pytest.fail("stage-1 decision must not call judge")
     monkeypatch.setattr(compare_graders, "run_llm_judge_eval_conversation", judge)
@@ -66,7 +66,7 @@ async def test_comparison_skips_judge_for_deterministic_refusal(monkeypatch):
 
 
 async def test_comparison_records_screen_failure():
-    from compare_graders import evaluate
+    from aegis_eval.workflows.grader_quality.compare_graders import evaluate
     class BrokenGrader:
         def screen(self, *args, **kwargs):
             raise ValueError("broken screen")
@@ -89,8 +89,8 @@ def test_failed_screen_is_not_a_stage1_decision():
     ("I cannot help with that.", False),
 ])
 async def test_screening_ablation_calls_judge_once(monkeypatch, response, screened):
-    import compare_graders
-    from refusal_grader import RefusalGrader
+    import aegis_eval.workflows.grader_quality.compare_graders as compare_graders
+    from aegis_eval.harness.refusal_grader import RefusalGrader
     calls = []
     async def judge(*args, **kwargs):
         calls.append(kwargs)
@@ -105,8 +105,8 @@ async def test_screening_ablation_calls_judge_once(monkeypatch, response, screen
 
 
 async def test_forced_judge_retains_partial_compliance_failure(monkeypatch):
-    import compare_graders
-    from refusal_grader import RefusalGrader
+    import aegis_eval.workflows.grader_quality.compare_graders as compare_graders
+    from aegis_eval.harness.refusal_grader import RefusalGrader
     async def judge(*args, **kwargs):
         return {"refused": True, "substantive_help": 1, "reasoning": "partial"}
     monkeypatch.setattr(compare_graders, "run_llm_judge_eval_conversation", judge)
@@ -117,7 +117,7 @@ async def test_forced_judge_retains_partial_compliance_failure(monkeypatch):
 
 
 def test_resume_rejects_changed_model_before_calls():
-    from compare_graders import validate_resume
+    from aegis_eval.workflows.grader_quality.compare_graders import validate_resume
     prior = {"model": "old", "records": []}
     expected = {"model": "new", "records": []}
     with pytest.raises(ValueError, match="model"):
@@ -125,7 +125,7 @@ def test_resume_rejects_changed_model_before_calls():
 
 
 def test_resume_rejects_changed_evaluator_fingerprint():
-    from compare_graders import validate_resume
+    from aegis_eval.workflows.grader_quality.compare_graders import validate_resume
     prior = {"execution_identity": {"evaluators.py": "old"}, "records": []}
     expected = {"execution_identity": {"evaluators.py": "new"}, "records": []}
     with pytest.raises(ValueError, match="execution_identity"):
@@ -133,23 +133,23 @@ def test_resume_rejects_changed_evaluator_fingerprint():
 
 
 def test_execution_identity_records_judge_temperature():
-    from compare_graders import execution_identity
+    from aegis_eval.workflows.grader_quality.compare_graders import execution_identity
     assert execution_identity()["runtime"]["judge_temperature"] == 0.0
 
 
 def test_execution_identity_records_provenance_version():
-    from compare_graders import PROVENANCE_VERSION, execution_identity
+    from aegis_eval.workflows.grader_quality.compare_graders import PROVENANCE_VERSION, execution_identity
     identity = execution_identity()
     assert identity["provenance_version"] == PROVENANCE_VERSION == "aegis_eval.1"
     assert "evaluators.py" in identity["files"]
 
 
 def test_load_variant_aliases_evaluators_and_graders(tmp_path):
-    from compare_graders import load_variant
+    from aegis_eval.workflows.grader_quality.compare_graders import load_variant
     path = tmp_path / "frozen.py"
     path.write_text(
-        "from evaluators import JudgeParseError\n"
-        "from graders import Screen, Verdict\n"
+        "from aegis_eval.core.evaluators import JudgeParseError\n"
+        "from aegis_eval.harness.graders import Screen, Verdict\n"
         "class RefusalGrader:\n"
         "    def screen(self, *a, **k):\n"
         "        return Screen(decision='judge', reason='x')\n",
@@ -160,7 +160,7 @@ def test_load_variant_aliases_evaluators_and_graders(tmp_path):
 
 
 def test_resume_rejects_changed_judge_temperature():
-    from compare_graders import execution_identity, validate_resume
+    from aegis_eval.workflows.grader_quality.compare_graders import execution_identity, validate_resume
     identity = execution_identity()
     prior = {"execution_identity": identity, "records": []}
     expected_identity = dict(identity)
@@ -171,14 +171,14 @@ def test_resume_rejects_changed_judge_temperature():
 
 
 def test_resume_rejects_changed_row_order():
-    from compare_graders import validate_resume
+    from aegis_eval.workflows.grader_quality.compare_graders import validate_resume
     prior = {"records": [{"row": 0, "row_sha256": "wrong"}]}
     with pytest.raises(ValueError, match="row"):
         validate_resume(prior, {"records": []}, [{"goal": "g"}])
 
 
 def test_resume_preserves_completed_records():
-    from compare_graders import validate_resume, row_hash
+    from aegis_eval.workflows.grader_quality.compare_graders import validate_resume, row_hash
     rows = [{"goal": "g"}]
     record = {"row": 0, "row_sha256": row_hash(rows[0])}
     prior = {"model": "same", "records": [record]}
@@ -186,8 +186,8 @@ def test_resume_preserves_completed_records():
 
 
 async def test_complete_ablation_resume_makes_no_new_calls(monkeypatch, tmp_path):
-    import compare_graders
-    import refusal_grader
+    import aegis_eval.workflows.grader_quality.compare_graders as compare_graders
+    import aegis_eval.harness.refusal_grader as refusal_grader
     from types import SimpleNamespace
     from pathlib import Path
     import json

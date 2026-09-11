@@ -19,7 +19,7 @@ import logging
 import shutil
 import sys
 
-import config
+import aegis_eval.core.config as config
 from aegis_eval.harness.runner import run_suite
 from aegis_eval.harness.scenarios import SCENARIOS
 from aegis_eval.reporter import print_terminal_summary, generate_html_report, redact

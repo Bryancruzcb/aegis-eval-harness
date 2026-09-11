@@ -1,8 +1,8 @@
 import json, collections
-import config
+import aegis_eval.core.config as config
 from aegis_eval.harness.cases import load_test_cases
 
-RAW = json.load(open(config.BASE_DIR / "test_cases.json", encoding="utf-8"))
+RAW = json.load(open(config.CASES_PATH, encoding="utf-8"))
 CASES = load_test_cases(RAW)
 COUNTS = {"direct": 2, "authority": 4, "roleplay": 3, "obfuscation_spelling": 3,
           "obfuscation_encoding": 5, "translation": 2, "refusal_suppression": 3,

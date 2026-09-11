@@ -1,7 +1,7 @@
 import hashlib
 import pytest
 
-from benchmarks.fetch import fetch_csv, BenchmarkFetchError
+from aegis_eval.benchmarks.fetch import fetch_csv, BenchmarkFetchError
 
 BODY = "Index,Goal\n1,say hello\n"
 GOOD = hashlib.sha256(BODY.encode()).hexdigest()
@@ -17,7 +17,7 @@ def test_downloads_verifies_and_caches(tmp_path, monkeypatch):
         calls["n"] += 1
         return _FakeResponse(BODY)
 
-    monkeypatch.setattr("benchmarks.fetch._urlopen", fake_open)
+    monkeypatch.setattr("aegis_eval.benchmarks.fetch._urlopen", fake_open)
     a = fetch_csv("https://x/y.csv", sha256=GOOD, cache_dir=tmp_path)
     b = fetch_csv("https://x/y.csv", sha256=GOOD, cache_dir=tmp_path)
     assert a == b == BODY
@@ -25,7 +25,7 @@ def test_downloads_verifies_and_caches(tmp_path, monkeypatch):
 
 
 def test_hash_mismatch_raises_and_does_not_poison_cache(tmp_path, monkeypatch):
-    monkeypatch.setattr("benchmarks.fetch._urlopen",
+    monkeypatch.setattr("aegis_eval.benchmarks.fetch._urlopen",
                         lambda url, timeout=None: _FakeResponse("tampered"))
     with pytest.raises(BenchmarkFetchError) as e:
         fetch_csv("https://x/y.csv", sha256=GOOD, cache_dir=tmp_path)
@@ -34,7 +34,7 @@ def test_hash_mismatch_raises_and_does_not_poison_cache(tmp_path, monkeypatch):
 
 
 def test_corrupt_cache_is_detected_on_read(tmp_path, monkeypatch):
-    monkeypatch.setattr("benchmarks.fetch._urlopen",
+    monkeypatch.setattr("aegis_eval.benchmarks.fetch._urlopen",
                         lambda url, timeout=None: _FakeResponse(BODY))
     fetch_csv("https://x/y.csv", sha256=GOOD, cache_dir=tmp_path)
     cached = next(tmp_path.iterdir())
@@ -56,7 +56,7 @@ def test_crlf_body_is_cached_byte_for_byte_and_survives_a_second_read(tmp_path, 
         calls["n"] += 1
         return _FakeResponse(CRLF_BODY)
 
-    monkeypatch.setattr("benchmarks.fetch._urlopen", fake_open)
+    monkeypatch.setattr("aegis_eval.benchmarks.fetch._urlopen", fake_open)
     first = fetch_csv("https://x/crlf.csv", sha256=CRLF_GOOD, cache_dir=tmp_path)
 
     cached = tmp_path / "crlf.csv"
@@ -71,7 +71,7 @@ def test_crlf_body_is_cached_byte_for_byte_and_survives_a_second_read(tmp_path, 
 def test_network_failure_is_wrapped(tmp_path, monkeypatch):
     def boom(url, timeout=None):
         raise OSError("no route to host")
-    monkeypatch.setattr("benchmarks.fetch._urlopen", boom)
+    monkeypatch.setattr("aegis_eval.benchmarks.fetch._urlopen", boom)
     with pytest.raises(BenchmarkFetchError) as e:
         fetch_csv("https://x/y.csv", sha256=GOOD, cache_dir=tmp_path)
     assert "https://x/y.csv" in str(e.value)     # the URL is named

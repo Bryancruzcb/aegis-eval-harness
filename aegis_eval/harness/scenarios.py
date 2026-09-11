@@ -5,11 +5,11 @@ A Scenario is what the harness runs. Today there is one; Phase 2b adds a second.
 from dataclasses import dataclass
 from typing import Callable
 
-import config
+import aegis_eval.core.config as config
 from aegis_eval.core import target
-from graders import Grader, SecretGuardianGrader
-from refusal_grader import RefusalGrader
-from benchmarks.jbb import load_jbb_cases
+from aegis_eval.harness.graders import Grader, SecretGuardianGrader
+from aegis_eval.harness.refusal_grader import RefusalGrader
+from aegis_eval.benchmarks.jbb import load_jbb_cases
 from aegis_eval.harness.cases import load_test_cases
 
 
@@ -38,8 +38,8 @@ def _load_secret_guardian_cases(**_):
     """
     import json
 
-    import config
-    with open(config.BASE_DIR / "test_cases.json", "r", encoding="utf-8") as f:
+    import aegis_eval.core.config as config
+    with open(config.CASES_PATH, "r", encoding="utf-8") as f:
         return load_test_cases(json.load(f))
 
 

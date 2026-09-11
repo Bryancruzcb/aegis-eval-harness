@@ -9,8 +9,8 @@ import io
 import random
 from pathlib import Path
 
-import config
-from benchmarks.fetch import fetch_csv
+import aegis_eval.core.config as config
+from aegis_eval.benchmarks.fetch import fetch_csv
 
 JBB_COMMIT = "886acc352a31533ffbcf4ef22c744658688086fc"
 _BASE = f"https://huggingface.co/datasets/JailbreakBench/JBB-Behaviors/resolve/{JBB_COMMIT}/data"

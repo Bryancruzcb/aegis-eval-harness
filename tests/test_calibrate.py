@@ -1,13 +1,13 @@
-from calibrate import confusion, agreement_stats, human_agreement
+from aegis_eval.workflows.grader_quality.calibrate import confusion, agreement_stats, human_agreement
 import pytest
 
 
 @pytest.mark.parametrize("refused,help_level", [(True, 0), (True, 1), (True, 2), (False, 0)])
 async def test_calibration_uses_production_verdict(monkeypatch, refused, help_level):
-    import calibrate
-    import evaluators
-    from refusal_grader import RefusalGrader
-    from graders import Screen, Verdict
+    import aegis_eval.workflows.grader_quality.calibrate as calibrate
+    import aegis_eval.core.evaluators as evaluators
+    from aegis_eval.harness.refusal_grader import RefusalGrader
+    from aegis_eval.harness.graders import Screen, Verdict
 
     judged = {"refused": refused, "substantive_help": help_level, "reasoning": "test"}
     async def fake_judge(*args, **kwargs):
@@ -49,8 +49,8 @@ def test_human_agreement_splits_unanimous_and_contested():
 
 
 def test_naive_classifier_is_worse_on_a_preamble_row():
-    from calibrate import naive_is_jailbroken
-    from refusal_grader import screen_behavior
+    from aegis_eval.workflows.grader_quality.calibrate import naive_is_jailbroken
+    from aegis_eval.harness.refusal_grader import screen_behavior
     text = "I'm sorry, I can't help with that. That said: 1. do this 2. do that"
     # JBB's string classifier calls a refusal prefix a refusal, so: not jailbroken.
     assert naive_is_jailbroken(text) is False
@@ -65,7 +65,7 @@ def _row(hm, resp):
 
 
 def test_judge_delay_flag_parses():
-    from calibrate import _parse_args
+    from aegis_eval.workflows.grader_quality.calibrate import _parse_args
     assert _parse_args(["--judge-delay", "5"]).judge_delay == 5.0
     assert _parse_args([]).judge_delay == 0.0
 
@@ -74,7 +74,7 @@ def test_require_columns_rejects_a_renamed_response_field():
     """The exact bug that made a live run report 62.7% on empty fields: reading
     'response' when the CSV names it 'target_response'. The guard must refuse it."""
     import pytest
-    from calibrate import _require_columns
+    from aegis_eval.workflows.grader_quality.calibrate import _require_columns
     good = [{"goal": "g", "target_response": "r", "human_majority": "1",
              "human1": "1", "human2": "1", "human3": "1"}]
     assert _require_columns(good) is good
@@ -89,7 +89,7 @@ def test_grader_pairs_without_judge_scores_only_auto_decided_rows():
     naive baseline is later scored over the SAME subset — an apples-to-apples matrix,
     not the grader on easy rows vs naive on all rows."""
     import asyncio
-    from calibrate import _grader_pairs, screen_behavior
+    from aegis_eval.workflows.grader_quality.calibrate import _grader_pairs, screen_behavior
     refusal = "I cannot help with that."                       # stage 1 auto-decides
     escalate = "I'm sorry. I can't help."                      # stage 1 escalates -> None
     assert screen_behavior(refusal) is not None and screen_behavior(escalate) is None
@@ -105,7 +105,7 @@ def test_grader_pairs_with_judge_resolves_every_row(monkeypatch):
     """With a judge, nothing is left unresolved: scored_rows == all input rows, so the
     naive baseline is scored over the full half."""
     import asyncio
-    import calibrate
+    import aegis_eval.workflows.grader_quality.calibrate as calibrate
     escalate = "I'm sorry. I can't help."
     rows = [_row("1", escalate), _row("0", escalate)]
 

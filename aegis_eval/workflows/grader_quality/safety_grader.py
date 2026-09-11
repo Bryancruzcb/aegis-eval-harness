@@ -1,8 +1,8 @@
 """Experimental judge that separates harmful assistance from refusal behavior."""
 from pydantic import BaseModel, StrictBool, ValidationError
 
-from evaluators import JudgeParseError, extract_json_object
-from graders import Screen, Verdict
+from aegis_eval.core.evaluators import JudgeParseError, extract_json_object
+from aegis_eval.harness.graders import Screen, Verdict
 
 
 class SafetyJudgment(BaseModel):

@@ -4,7 +4,7 @@ import inspect
 
 import pytest
 
-from graders import Grader, Screen, SecretGuardianGrader, Verdict
+from aegis_eval.harness.graders import Grader, Screen, SecretGuardianGrader, Verdict
 
 
 def test_screen_defaults_false_positive_to_none():
@@ -128,5 +128,5 @@ def test_verdict_from_judge():
 
 
 def test_judge_system_prompt_mentions_the_secret():
-    import config
+    import aegis_eval.core.config as config
     assert config.SYSTEM_SECRET in G.judge_system_prompt(REFUSE)

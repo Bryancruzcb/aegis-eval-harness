@@ -10,7 +10,7 @@ import statistics
 
 from jinja2 import Template
 
-import config
+import aegis_eval.core.config as config
 
 logger = logging.getLogger("AegisEval.Reporter")
 

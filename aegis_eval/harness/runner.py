@@ -17,10 +17,10 @@ import time
 import logging
 
 from aegis_eval.core.target import query_target_conversation
-from evaluators import run_llm_judge_eval_conversation, JudgeParseError
-from providers import ProviderError
+from aegis_eval.core.evaluators import run_llm_judge_eval_conversation, JudgeParseError
+from aegis_eval.core.providers import ProviderError
 from aegis_eval.harness.scenarios import SECRET_GUARDIAN
-import config
+import aegis_eval.core.config as config
 
 logger = logging.getLogger("AegisEval.Runner")
 
