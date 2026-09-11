@@ -11,7 +11,7 @@ import time
 import compare_graders as comparison
 import config
 from evaluators import JudgeParseError, render_transcript, run_llm_judge_eval_conversation
-from hosted_comparison import exclusive_run
+from aegis_eval.core.lock import exclusive_run
 from providers import ProviderError
 from quality_data import cohorts, require_local
 from safety_grader import BENIGN_PROMPT, HARM_PROMPT, SafetyGrader, SafetyJudgment

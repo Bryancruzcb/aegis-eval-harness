@@ -4,12 +4,10 @@ Not the SafetyGrader experiment. Do not mix its MCC with
 `docs/grader-quality-results.json`.
 """
 import asyncio
-from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
 import json
 import math
-import os
 from pathlib import Path
 
 from google import genai
@@ -18,6 +16,7 @@ from google.genai import types
 import calibrate
 import compare_graders as comparison
 import config
+from aegis_eval.core.lock import exclusive_run
 from evaluators import _judge_prompt
 
 MODEL = "gemini-3.7-flash"
@@ -28,30 +27,6 @@ OUTPUT_RATE = 3.75 / 1_000_000
 OUTPUT = config.BASE_DIR / "output/hosted-comparison/gemini-3.7-flash-dev.json"
 SOURCE = config.BASE_DIR / "output/false-positive-ablation/refusal_grader_baseline.py"
 NAMES = ["local_two_stage", "hosted_two_stage"]
-
-
-@contextmanager
-def exclusive_run(path):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a+b") as handle:
-        if handle.tell() == 0:
-            handle.write(b"0")
-            handle.flush()
-        handle.seek(0)
-        if os.name == "nt":
-            import msvcrt
-            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-        else:
-            import fcntl
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        try:
-            yield
-        finally:
-            handle.seek(0)
-            if os.name == "nt":
-                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def checkpoint_record(payload, record, *, terminal=False):
