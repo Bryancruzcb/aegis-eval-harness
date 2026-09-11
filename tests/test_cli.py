@@ -1,7 +1,7 @@
 """Tests for the CI exit-code decision."""
 import pytest
 
-from run import parse_args, decide_exit_code
+from aegis_eval.cli.run import parse_args, decide_exit_code
 
 
 def _summary(total, evaluated, pass_rate):
@@ -46,13 +46,13 @@ def test_unknown_scenario_is_rejected():
 
 
 def test_sampling_flags_map_to_loader_kwargs():
-    from run import load_kwargs_from_args
+    from aegis_eval.cli.run import load_kwargs_from_args
     ns = parse_args(["--smoke", "--sample-seed", "3", "--refresh-benchmark"])
     assert load_kwargs_from_args(ns) == {"mode": "smoke", "seed": 3, "refresh": True}
 
 
 def test_default_and_full_map_to_expected_modes():
-    from run import load_kwargs_from_args
+    from aegis_eval.cli.run import load_kwargs_from_args
     assert load_kwargs_from_args(parse_args([]))["mode"] == "sample"
     assert load_kwargs_from_args(parse_args(["--full"]))["mode"] == "full"
 
@@ -84,7 +84,7 @@ def test_benign_only_selection_not_false_failure():
 
 def test_gate_rate_helper_is_the_number_the_gate_used():
     # the printed rate and the exit code must come from one source
-    from run import _gate_rate, _gate_eval
+    from aegis_eval.cli.run import _gate_rate, _gate_eval
     s = {"total": 10, "evaluated": 10, "pass_rate": 90.0,
          "attack_total": 8, "attack_evaluated": 8, "attack_pass_rate": 75.0}
     assert _gate_rate(s) == 75.0 and _gate_eval(s) == 8
@@ -122,7 +122,7 @@ def test_over_refusal_gate_ignored_without_control_cases():
 
 
 def test_self_grading_is_detected():
-    from run import is_self_grading
+    from aegis_eval.cli.run import is_self_grading
     assert is_self_grading("ollama:llama3.2:3b", "ollama:llama3.2:3b") is True
     assert is_self_grading("gemini:x", "ollama:y") is False
 
@@ -173,7 +173,7 @@ def test_missing_keys_flags_openai_attacker_provider(monkeypatch):
     # same clean "[Config] Missing key" path, not degrade to an all-errored run.
     import config as cfg
     monkeypatch.setattr(cfg, "OPENAI_API_KEY", None)
-    from run import missing_keys
+    from aegis_eval.cli.run import missing_keys
     assert "OPENAI_API_KEY" in missing_keys("ollama", "ollama", "openai")
 
 
@@ -181,7 +181,7 @@ def test_missing_keys_ollama_attacker_needs_no_key(monkeypatch):
     import config as cfg
     monkeypatch.setattr(cfg, "OPENAI_API_KEY", None)
     monkeypatch.setattr(cfg, "GEMINI_API_KEY", None)
-    from run import missing_keys
+    from aegis_eval.cli.run import missing_keys
     assert missing_keys("ollama", "ollama", "ollama") == []
 
 
@@ -190,5 +190,5 @@ def test_missing_keys_ignores_attacker_provider_when_none(monkeypatch):
     import config as cfg
     monkeypatch.setattr(cfg, "OPENAI_API_KEY", None)
     monkeypatch.setattr(cfg, "GEMINI_API_KEY", None)
-    from run import missing_keys
+    from aegis_eval.cli.run import missing_keys
     assert missing_keys("ollama", "ollama", None) == []

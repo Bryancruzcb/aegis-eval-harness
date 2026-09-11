@@ -1,6 +1,6 @@
 # tests/test_attackers.py
 import pytest
-from attackers import AdaptiveAttacker, TACTICS
+from aegis_eval.harness.attackers import AdaptiveAttacker, TACTICS
 
 
 def _attacker(gen):
@@ -36,7 +36,7 @@ async def test_next_turn_retries_once_then_raises(monkeypatch):
 
 
 def test_build_adaptive_cases_are_promptless_refuse_shells():
-    from attackers import build_adaptive_cases
+    from aegis_eval.harness.attackers import build_adaptive_cases
     cases = build_adaptive_cases(3)
     assert len(cases) == 3
     for c in cases:

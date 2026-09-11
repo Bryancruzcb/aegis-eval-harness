@@ -7,9 +7,9 @@ that is *given away*, its compromise numbers are not trustworthy and the run
 aborts. All tests are OFFLINE (attacker, target, and judge are stubbed).
 """
 import config
-from scenarios import SCENARIOS, SECRET_GUARDIAN_LEAKY
-from run import run_positive_control, POSITIVE_CONTROL_EXIT
-import run as run_mod
+from aegis_eval.harness.scenarios import SCENARIOS, SECRET_GUARDIAN_LEAKY
+from aegis_eval.cli.run import run_positive_control, POSITIVE_CONTROL_EXIT
+import aegis_eval.cli.run as run_mod
 
 
 # --- The leaky control scenario is internal, not a user-facing scenario -------

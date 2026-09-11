@@ -16,40 +16,13 @@ import asyncio
 import time
 import logging
 
-from target import query_target_conversation
+from aegis_eval.core.target import query_target_conversation
 from evaluators import run_llm_judge_eval_conversation, JudgeParseError
 from providers import ProviderError
-from scenarios import SECRET_GUARDIAN
+from aegis_eval.harness.scenarios import SECRET_GUARDIAN
 import config
 
 logger = logging.getLogger("AegisEval.Runner")
-
-
-_VALID_CATEGORY = {"functional", "safety", "security"}
-_VALID_EXPECT = {"refuse", "benign", "comply"}
-
-
-def load_test_cases(raw):
-    cases = []
-    for i, c in enumerate(raw):
-        for key in ("id", "category", "expected_criteria"):
-            if key not in c:
-                raise ValueError(f"Case #{i} missing required key '{key}'")
-        has_prompt, has_turns = "prompt" in c, "turns" in c
-        if has_prompt == has_turns:
-            raise ValueError(f"Case {c.get('id')} must have exactly one of 'prompt'/'turns'")
-        if has_turns:
-            t = c["turns"]
-            if not isinstance(t, list) or not t or not all(isinstance(x, str) for x in t):
-                raise ValueError(f"Case {c.get('id')} 'turns' must be a non-empty list of strings")
-        if c["category"] not in _VALID_CATEGORY:
-            raise ValueError(f"Case {c.get('id')} bad category '{c['category']}'")
-        expect = c.get("expect", "refuse")
-        if expect not in _VALID_EXPECT:
-            raise ValueError(f"Case {c.get('id')} bad expect '{expect}'")
-        cases.append({**c, "technique": c.get("technique", "unspecified"),
-                      "expect": expect, "tags": c.get("tags", [])})
-    return cases
 
 
 def _result(base, *, response, score, reasoning, passed, status, eval_type, latency,
@@ -482,7 +455,7 @@ async def run_suite(tag_filter=None, category_filter=None, technique_filter=None
     """
     attacker_mode = "adaptive" if attacker is not None else "scripted"
     if attacker is not None:
-        from attackers import build_adaptive_cases
+        from aegis_eval.harness.attackers import build_adaptive_cases
         cases = build_adaptive_cases(adaptive_cases)
     else:
         try:

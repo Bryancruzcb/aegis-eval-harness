@@ -1,7 +1,7 @@
 """Tests for summary math and HTML report escaping."""
-from runner import build_summary
-from reporter import generate_html_report, print_terminal_summary, redact
-from run import parse_args, maybe_redact_responses
+from aegis_eval.harness.runner import build_summary
+from aegis_eval.reporter import generate_html_report, print_terminal_summary, redact
+from aegis_eval.cli.run import parse_args, maybe_redact_responses
 
 
 # --- Summary construction ---

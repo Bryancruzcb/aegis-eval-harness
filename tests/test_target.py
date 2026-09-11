@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import types as pytypes
 import pytest
-import target
+import aegis_eval.core.target as target
 
 def test_build_openai_messages_prepends_system():
     msgs = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "yo"}]
@@ -136,7 +136,7 @@ def test_query_target_system_prompt_is_keyword_only():
 
 
 def test_scenario_registry_has_secret_guardian():
-    from scenarios import SCENARIOS, SECRET_GUARDIAN
+    from aegis_eval.harness.scenarios import SCENARIOS, SECRET_GUARDIAN
     assert SCENARIOS["secret-guardian"] is SECRET_GUARDIAN
     assert SECRET_GUARDIAN.system_prompt == target.SYSTEM_INSTRUCTION
     assert SECRET_GUARDIAN.name == "secret-guardian"

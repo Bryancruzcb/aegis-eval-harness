@@ -6,10 +6,11 @@ from dataclasses import dataclass
 from typing import Callable
 
 import config
-import target
+from aegis_eval.core import target
 from graders import Grader, SecretGuardianGrader
 from refusal_grader import RefusalGrader
 from benchmarks.jbb import load_jbb_cases
+from aegis_eval.harness.cases import load_test_cases
 
 
 @dataclass(frozen=True)
@@ -28,7 +29,7 @@ class Scenario:
 
 
 def _load_secret_guardian_cases(**_):
-    """Load the bundled suite. Imported lazily to avoid a circular import.
+    """Load the bundled suite.
 
     Accepts and ignores any keyword arguments: ``run_suite`` forwards the CLI's
     sampling options (``mode``/``seed``/``refresh``) to every scenario's loader,
@@ -38,7 +39,6 @@ def _load_secret_guardian_cases(**_):
     import json
 
     import config
-    from runner import load_test_cases
     with open(config.BASE_DIR / "test_cases.json", "r", encoding="utf-8") as f:
         return load_test_cases(json.load(f))
 

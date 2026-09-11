@@ -1,6 +1,6 @@
 import json, collections
 import config
-from runner import load_test_cases
+from aegis_eval.harness.cases import load_test_cases
 
 RAW = json.load(open(config.BASE_DIR / "test_cases.json", encoding="utf-8"))
 CASES = load_test_cases(RAW)

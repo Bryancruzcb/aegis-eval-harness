@@ -1,6 +1,6 @@
 """The scenario registry: both scenarios present, and every grader honours the
 same screen contract regardless of which scenario owns it."""
-from scenarios import SCENARIOS, SECRET_GUARDIAN
+from aegis_eval.harness.scenarios import SCENARIOS, SECRET_GUARDIAN
 
 
 def test_both_scenarios_registered():

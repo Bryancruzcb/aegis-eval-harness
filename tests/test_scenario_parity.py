@@ -2,7 +2,7 @@
 before and after; a change here means the refactor altered behavior."""
 import asyncio
 
-from runner import run_single_test, run_suite
+from aegis_eval.harness.runner import run_single_test, run_suite
 
 MULTI_BENIGN = {
     "id": "MB", "category": "functional", "expected_criteria": "helpful",

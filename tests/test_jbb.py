@@ -49,6 +49,6 @@ def test_sample_takes_all_when_category_is_smaller_than_quota():
 
 
 def test_cases_pass_the_loader_validation():
-    from runner import load_test_cases
+    from aegis_eval.harness.cases import load_test_cases
     cases = rows_to_cases(_rows(3), harmful=True) + rows_to_cases(_rows(3), harmful=False)
     assert len(load_test_cases(cases)) == 6      # raises if the schema is wrong
