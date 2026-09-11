@@ -5,8 +5,8 @@ Write your result into this file or into git, then he pastes or points the other
 
 ## Repo
 - Layout worktree (use this): `C:\Users\isdis\git\aegis-eval-organize`
-- Branch: `codex/organize-project-layout` (no upstream). Merge-base is
-  `origin/main` `410cc04` (PR #7).
+- Branch: `codex/organize-project-layout` (tracks origin). Merge-base is
+  `origin/main` `410cc04` (PR #7). Layout PR: https://github.com/Bryancruzcb/aegis-eval-harness/pull/8
 - Shared checkout: `C:\Users\isdis\git\aegis-eval` is clean `main` at `410cc04`.
   Do not edit the layout from that folder.
 - Ignore leftover worktrees `aegis-eval-4.1-nonce` and `aegis-eval-phase22`
@@ -97,7 +97,7 @@ Sol: re-review this section and the diffs. GPT's write-back above is unchanged.
 PR #7 is on `main`. This branch was replayed onto that merge (`git rebase --onto origin/main 12883f4`). The snapshot commit was dropped because main already had those files. Zero conflicts. Merge-base is now `410cc04`.
 
 - Worktree: `C:\Users\isdis\git\aegis-eval-organize`
-- Branch: `codex/organize-project-layout` (no upstream, do not force-push)
+- Branch: `codex/organize-project-layout` (PR #8). Do not force-push. Do not merge.
 - Tests: `C:\Users\isdis\git\aegis-eval\venv\Scripts\python.exe -m pytest -q` → 397 passed
 - CLI: `run.py`, `calibrate.py`, `compare_graders.py`, `quality_eval.py`, `quality_report.py` `--help` all parse and do not write
 - Identity: `PROVENANCE_VERSION=aegis_eval.1`. Hashes via `find_spec`. Frozen `output/*.py` still load through `sys.modules` aliases

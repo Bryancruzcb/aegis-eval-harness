@@ -1,7 +1,7 @@
 # AegisEval project layout
 
 - **Date:** 2026-09-11
-- **Status:** Implemented. Rebased onto `origin/main` `410cc04` (PR #7). `pytest -q` → 397 passed. Branch has no upstream. Do not force-push.
+- **Status:** Implemented. Rebased onto `origin/main` `410cc04` (PR #7). `pytest -q` → 397 passed. PR: https://github.com/Bryancruzcb/aegis-eval-harness/pull/8
 - **Branch:** `codex/organize-project-layout` at `C:\Users\isdis\git\aegis-eval-organize`
 - **Shared checkout:** `C:\Users\isdis\git\aegis-eval` is `main` at `410cc04`. Do not edit this layout from that folder. Ignore leftover worktrees `aegis-eval-4.1-nonce` and `aegis-eval-phase22` (both parked at `84c69f3`).
 

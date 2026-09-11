@@ -22,7 +22,8 @@ rebased onto `origin/main` `410cc04` (PR #7). Do not open
   `compare_graders.load_variant` exist so those files keep loading.
 - Re-review the grader-quality experiment. That review is closed in
   `HANDOFF-grok-gpt.md`.
-- Push, force-push, or merge to `main`.
+- Force-push or merge to `main`. Pushing the layout write-back commit to
+  `codex/organize-project-layout` is allowed.
 
 ## Facts already established
 
@@ -38,7 +39,7 @@ rebased onto `origin/main` `410cc04` (PR #7). Do not open
 - Import DAG is enforced by `tests/test_import_layers.py`.
 - Historical 2026-07 and 2026-09-07/08 superpowers plans/specs were deleted
   on request. This layout spec stayed. Experiment walkthroughs and JSON stayed.
-- Branch has no upstream.
+- Upstream: `origin/codex/organize-project-layout`. PR: https://github.com/Bryancruzcb/aegis-eval-harness/pull/8
 
 ## What to review
 
