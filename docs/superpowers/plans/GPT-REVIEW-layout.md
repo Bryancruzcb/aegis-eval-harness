@@ -22,8 +22,7 @@ rebased onto `origin/main` `410cc04` (PR #7). Do not open
   `compare_graders.load_variant` exist so those files keep loading.
 - Re-review the grader-quality experiment. That review is closed in
   `HANDOFF-grok-gpt.md`.
-- Force-push or merge to `main`. Pushing the layout write-back commit to
-  `codex/organize-project-layout` is allowed.
+- Force-push.
 
 ## Facts already established
 
@@ -67,3 +66,14 @@ C:\Users\isdis\git\aegis-eval\venv\Scripts\python.exe -m pytest -q
 
 This worktree has no local `venv`. Use the shared venv. Do not install into it
 for this review.
+
+## After the review
+
+Fill the layout write-back in `HANDOFF-grok-gpt.md`, commit, and push.
+
+If **Blocker for landing** is empty and pytest is green, merge
+https://github.com/Bryancruzcb/aegis-eval-harness/pull/8 into `main`
+(GitHub merge commit is fine). Bryan is not coming back to merge it.
+
+If there is a blocker, leave the PR open and write the blocker in the
+write-back. Do not merge.

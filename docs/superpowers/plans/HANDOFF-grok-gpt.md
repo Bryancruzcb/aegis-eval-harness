@@ -97,7 +97,8 @@ Sol: re-review this section and the diffs. GPT's write-back above is unchanged.
 PR #7 is on `main`. This branch was replayed onto that merge (`git rebase --onto origin/main 12883f4`). The snapshot commit was dropped because main already had those files. Zero conflicts. Merge-base is now `410cc04`.
 
 - Worktree: `C:\Users\isdis\git\aegis-eval-organize`
-- Branch: `codex/organize-project-layout` (PR #8). Do not force-push. Do not merge.
+- Branch: `codex/organize-project-layout` (PR #8). Do not force-push.
+  Merge PR #8 after a clean layout review with no landing blocker.
 - Tests: `C:\Users\isdis\git\aegis-eval\venv\Scripts\python.exe -m pytest -q` → 397 passed
 - CLI: `run.py`, `calibrate.py`, `compare_graders.py`, `quality_eval.py`, `quality_report.py` `--help` all parse and do not write
 - Identity: `PROVENANCE_VERSION=aegis_eval.1`. Hashes via `find_spec`. Frozen `output/*.py` still load through `sys.modules` aliases
@@ -105,6 +106,7 @@ PR #7 is on `main`. This branch was replayed onto that merge (`git rebase --onto
 - Brief: `docs/superpowers/plans/GPT-REVIEW-layout.md`
 
 GPT: review the layout only. Do not re-open the MCC/adopt_candidate review above.
+If the write-back has no landing blocker, merge PR #8.
 
 ## Layout write-back (GPT fills this)
 
@@ -113,4 +115,5 @@ GPT: review the layout only. Do not re-open the MCC/adopt_candidate review above
 - Tests run:
 - Findings:
 - Blocker for landing:
+- Merged PR #8?:
 - Do not do next:
