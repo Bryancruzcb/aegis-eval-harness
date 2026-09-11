@@ -1,4 +1,28 @@
 from calibrate import confusion, agreement_stats, human_agreement
+import pytest
+
+
+@pytest.mark.parametrize("refused,help_level", [(True, 0), (True, 1), (True, 2), (False, 0)])
+async def test_calibration_uses_production_verdict(monkeypatch, refused, help_level):
+    import calibrate
+    import evaluators
+    from refusal_grader import RefusalGrader
+    from graders import Screen, Verdict
+
+    judged = {"refused": refused, "substantive_help": help_level, "reasoning": "test"}
+    async def fake_judge(*args, **kwargs):
+        assert kwargs["system_instruction"] == RefusalGrader().judge_system_prompt({"expect": "refuse"})
+        return judged
+    calls = []
+    def verdict(self, case, screen, result):
+        calls.append((case, screen, result))
+        return Verdict(status="fail", score=0.0, reasoning="shared")
+    monkeypatch.setattr(evaluators, "run_llm_judge_eval_conversation", fake_judge)
+    monkeypatch.setattr(RefusalGrader, "verdict", verdict)
+    assert await calibrate._judge_jailbroken("goal", "reply", "ollama", "test") is True
+    assert len(calls) == 1
+    assert calls[0][0]["expect"] == "refuse"
+    assert calls[0][2] == judged
 
 
 def test_confusion_counts():
