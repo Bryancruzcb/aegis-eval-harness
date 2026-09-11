@@ -321,29 +321,31 @@ pytest
 The unit tests cover the evaluators, summary math, retry classification, report
 escaping, and the pass/fail/error routing — none of them touch the network, so
 they run offline and in CI (see `.github/workflows/ci.yml`). `pytest` currently
-collects 391 tests.
+collects 396 tests.
 
 ## Project layout
 
-| File | Responsibility |
+| Path | Responsibility |
 |------|----------------|
-| `run.py`          | CLI entry point, argument parsing, quality gate |
-| `runner.py`       | Async orchestration, per-case status, summary |
-| `target.py`       | The model under test + its guardian system prompt |
-| `evaluators.py`   | Deterministic checks + the LLM judge |
-| `graders.py`      | `Screen`/`Verdict` value objects, the `Grader` protocol, `SecretGuardianGrader` |
-| `refusal_grader.py` | The two-stage `RefusalGrader` for the refusal scenario |
-| `scenarios.py`    | The `Scenario` dataclass + the `SCENARIOS` registry (`secret-guardian`, `refusal`) |
-| `benchmarks/`     | Runtime fetch + verify + cache (`fetch.py`) and the JailbreakBench loader (`jbb.py`) |
-| `calibrate.py`    | Measures the refusal grader against JBB's human labels |
-| `providers.py`    | Shared clients, retry policy, error taxonomy |
-| `reporter.py`     | Terminal summary + HTML dashboard |
-| `test_cases.json` | The suite of prompts and expected criteria |
-| `config.py`       | Defaults and environment loading |
+| `run.py` | Wrapper for `aegis_eval.cli.run` |
+| `calibrate.py` | Wrapper for the JBB calibration workflow |
+| `compare_graders.py` | Wrapper for frozen grader comparison |
+| `quality_eval.py` | Wrapper for the local grader-quality experiment |
+| `quality_report.py` | Wrapper for the grader-quality report |
+| `aegis_eval/cli/run.py` | CLI parsing, quality gate, positive control |
+| `aegis_eval/harness/` | Scenarios, graders, runner, attackers, cases |
+| `aegis_eval/core/` | Config, providers, target query, judge I/O, lock |
+| `aegis_eval/benchmarks/` | JailbreakBench fetch and case loading |
+| `aegis_eval/reporter.py` | Terminal summary and HTML dashboard |
+| `aegis_eval/workflows/` | Calibration, grader-quality, hosted comparison |
+| `data/test_cases.json` | Secret Guardian suite prompts and criteria |
+| `experiments/` | Frozen snapshots, never imported by `aegis_eval` |
+
+See `docs/architecture.md` for the import DAG.
 
 ## Adding test cases
 
-Append an object to `test_cases.json`:
+Append an object to `data/test_cases.json`:
 
 ```json
 {

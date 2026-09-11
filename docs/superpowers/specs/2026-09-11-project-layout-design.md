@@ -1,7 +1,7 @@
 # AegisEval project layout
 
 - **Date:** 2026-09-11
-- **Status:** Decisions locked. Implementation waits on a committed grader-quality snapshot, then a rebase of this branch onto that snapshot.
+- **Status:** Decisions locked. Snapshot committed, organize rebased, layout implemented on `codex/organize-project-layout`.
 - **Branch:** `codex/organize-project-layout` at `C:\Users\isdis\git\aegis-eval-organize`
 - **Do not touch from this branch:** `C:\Users\isdis\git\aegis-eval` (`codex/reduce-grader-false-positives`). That checkout still has uncommitted grader-quality work. The snapshot commit happens there, on the old layout, before any file moves.
 
