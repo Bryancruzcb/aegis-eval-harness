@@ -4,11 +4,18 @@ Grok cannot message GPT. GPT cannot message Grok. Bryan is the bus.
 Write your result into this file or into git, then he pastes or points the other model at it.
 
 ## Repo
-- Path: `C:\Users\isdis\git\aegis-eval`
-- Branch: `codex/reduce-grader-false-positives` (dirty working tree)
+- Layout worktree (use this): `C:\Users\isdis\git\aegis-eval-organize`
+- Branch: `codex/organize-project-layout` (no upstream). Merge-base is
+  `origin/main` `410cc04` (PR #7).
+- Shared checkout: `C:\Users\isdis\git\aegis-eval` is clean `main` at `410cc04`.
+  Do not edit the layout from that folder.
+- Ignore leftover worktrees `aegis-eval-4.1-nonce` and `aegis-eval-phase22`
+  (both parked at `84c69f3`).
 - Remote: `github.com/Bryancruzcb/aegis-eval-harness`
-- Plan: `docs/superpowers/plans/2026-09-11-ml-engineer-program.md`
-- Review brief: `docs/superpowers/plans/GPT-REVIEW.md`
+- Layout spec: `docs/superpowers/specs/2026-09-11-project-layout-design.md`
+- Layout review brief: `docs/superpowers/plans/GPT-REVIEW-layout.md`
+- Grader-quality plan (closed): `docs/superpowers/plans/2026-09-11-ml-engineer-program.md`
+- Grader-quality review brief (closed): `docs/superpowers/plans/GPT-REVIEW.md`
 - Do not wipe `output/grader-quality/{dev,fresh,harmless}.json`
 
 ## Experiment result (Grok, 2026-09-11)
@@ -84,3 +91,26 @@ Sol: re-review this section and the diffs. GPT's write-back above is unchanged.
   - [P2] `quality_report.decision_paragraphs` / `power_note` derive from `adopt_candidate`, gates, and fresh intervals. Adopting fixture no longer says production stays legacy. Failed-gate fixture still does. Walkthrough now: "The development FNR increase is confirmed on fresh." 86.7% is annotator unanimity, not an MCC ceiling. Tests: existing adopting report test plus `test_report_prose_follows_a_failed_gate`.
 - Blocker for landing: none from the write-back list. Still do not land as one giant commit (plan Phase 6.1).
 - Do not do next: do not adopt `SafetyGrader`; do not mix MCC 0.20/0.38/0.77 with this contract; do not drop the FNR gate; do not wipe the checkpoints; do not start `quality_eval.py`; do not retune `HARM_PROMPT` / `BENIGN_PROMPT`.
+
+## Layout (Grok, 2026-09-11)
+
+PR #7 is on `main`. This branch was replayed onto that merge (`git rebase --onto origin/main 12883f4`). The snapshot commit was dropped because main already had those files. Zero conflicts. Merge-base is now `410cc04`.
+
+- Worktree: `C:\Users\isdis\git\aegis-eval-organize`
+- Branch: `codex/organize-project-layout` (no upstream, do not force-push)
+- Tests: `C:\Users\isdis\git\aegis-eval\venv\Scripts\python.exe -m pytest -q` → 397 passed
+- CLI: `run.py`, `calibrate.py`, `compare_graders.py`, `quality_eval.py`, `quality_report.py` `--help` all parse and do not write
+- Identity: `PROVENANCE_VERSION=aegis_eval.1`. Hashes via `find_spec`. Frozen `output/*.py` still load through `sys.modules` aliases
+- New eval output would go to `output/grader-quality/aegis_eval.1/` and `output/hosted-comparison/aegis_eval.1/`. Sealed unversioned checkpoints were not rewritten
+- Brief: `docs/superpowers/plans/GPT-REVIEW-layout.md`
+
+GPT: review the layout only. Do not re-open the MCC/adopt_candidate review above.
+
+## Layout write-back (GPT fills this)
+
+- Date:
+- What you changed (files):
+- Tests run:
+- Findings:
+- Blocker for landing:
+- Do not do next:

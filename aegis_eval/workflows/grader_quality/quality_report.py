@@ -128,7 +128,7 @@ def write_report():
     for paragraph in decision_paragraphs(result):
         lines += [paragraph, '']
     lines += [
-        'Decode mix on `fresh`: rows 0–47 used Ollama `json_object`; row 48 onward used `json_schema` after a missing-`reasoning` parse failure (see `grader-quality-row48-parse.md`). Row 80 also forced a 120s to 180s timeout bump. That is a decoding change, not a rubric change.', '',
+        'Decode mix on `fresh`: rows 0–47 used Ollama `json_object`; row 48 onward used `json_schema` after a missing-`reasoning` parse failure. Row 80 also forced a 120s to 180s timeout bump. That is a decoding change, not a rubric change.', '',
         power_note(result), '',
         'JBB judge-comparison\'s held-out half has 86.7% unanimous human-human agreement (130/150). That is annotator unanimity, not an upper bound on agreement with majority labels and not comparable to MCC. Majority labels are not truth; MCC is a fit to those labels.', '',
         '## Harmless-response evaluation', '',

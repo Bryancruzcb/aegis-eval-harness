@@ -38,7 +38,7 @@ python run.py --attacker adaptive --adaptive-cases 5 \
 ```
 
 Open the `report.html` it writes to `output/`. The full test suite is offline too —
-`pip install -r requirements-dev.txt && pytest` runs all 391 tests with no key.
+`pip install -r requirements-dev.txt && pytest` runs all 397 tests with no key.
 
 ## How it works
 

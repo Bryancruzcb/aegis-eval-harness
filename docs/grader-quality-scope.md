@@ -5,7 +5,8 @@ historical work that happens to sit in the same working tree.
 
 ## In slice
 
-- `quality_eval.py`, `quality_data.py`, `quality_report.py`, `safety_grader.py`
+- `aegis_eval/workflows/grader_quality/{quality_eval,quality_data,quality_report,safety_grader}.py`
+  (root `quality_eval.py` and `quality_report.py` are wrappers)
 - Frozen cohorts in `output/grader-quality/{dev,fresh,harmless}.json`
 - Reports in `docs/grader-quality-results.json` and
   `docs/grader-quality-walkthrough.md`
@@ -21,8 +22,9 @@ These are not the frozen SafetyGrader experiment. Do not mix their MCC
 figures with the table in README.
 
 - `experiments/refusal_grader_revised.py` — rejected judge-alignment candidate
-- `hosted_comparison.py` / `hosted_comparison_37.py` — paid Gemini sweeps on
-  JBB-dev under the old refusal contract, $5 cap, already spent
+- `aegis_eval/workflows/hosted/hosted_comparison.py` and
+  `experiments/hosted_comparison_37.py` — paid Gemini sweeps on JBB-dev under
+  the old refusal contract, $5 cap, already spent
 - `docs/calibration-history.md`, `docs/judge-alignment-*.md`,
   `docs/hosted-judge-*.md`, `docs/gemini-37-*.md`,
   `docs/false-positive-*.md`

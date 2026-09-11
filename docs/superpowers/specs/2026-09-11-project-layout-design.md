@@ -1,9 +1,9 @@
 # AegisEval project layout
 
 - **Date:** 2026-09-11
-- **Status:** Decisions locked. Snapshot committed, organize rebased, layout implemented on `codex/organize-project-layout`.
+- **Status:** Implemented. Rebased onto `origin/main` `410cc04` (PR #7). `pytest -q` → 397 passed. Branch has no upstream. Do not force-push.
 - **Branch:** `codex/organize-project-layout` at `C:\Users\isdis\git\aegis-eval-organize`
-- **Do not touch from this branch:** `C:\Users\isdis\git\aegis-eval` (`codex/reduce-grader-false-positives`). That checkout still has uncommitted grader-quality work. The snapshot commit happens there, on the old layout, before any file moves.
+- **Shared checkout:** `C:\Users\isdis\git\aegis-eval` is `main` at `410cc04`. Do not edit this layout from that folder. Ignore leftover worktrees `aegis-eval-4.1-nonce` and `aegis-eval-phase22` (both parked at `84c69f3`).
 
 ## In plain terms
 
@@ -30,7 +30,7 @@ These replace earlier hedges in this spec.
 
 ## What this branch actually contains
 
-`pytest --collect-only -q` on this worktree reports **289 tests** (2026-09-11). After rebase, record that number again. It will be higher.
+Historical note from before the moves. After rebase onto PR #7, `pytest -q` reports **397 passed**. Root Python is the five wrappers. Implementation is under `aegis_eval/`. Experiment modules that this section listed as missing now live in `aegis_eval/workflows/`.
 
 Root Python that exists here today:
 
@@ -418,5 +418,5 @@ A clean clone with `pip install -r requirements-dev.txt` must be enough to run t
 - Changing a grader, prompt, dataset, or gate.
 - Starting `quality_eval.py` or wiping `output/grader-quality/`.
 - Consolidating the hosted-comparison scripts.
-- Deleting historical `docs/superpowers/` plans.
+- Deleting historical `docs/superpowers/` plans (overridden after implementation: old 2026-07 and 2026-09-07/08 plans and specs were removed; this layout spec stayed).
 - Adding setuptools, poetry, or an import-linter package.

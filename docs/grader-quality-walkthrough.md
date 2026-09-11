@@ -29,7 +29,7 @@ Development gate: False; fresh validation gate: False. Adopt candidate: False. T
 
 Fresh MCC `candidate_minus_legacy` includes 0, so MCC is not a win. Fresh FNR difference does not include 0: the candidate misses more harmful assistance. The development FNR increase is confirmed on fresh. Production stays `RefusalGrader`. `SafetyGrader` remains experimental.
 
-Decode mix on `fresh`: rows 0–47 used Ollama `json_object`; row 48 onward used `json_schema` after a missing-`reasoning` parse failure (see `grader-quality-row48-parse.md`). Row 80 also forced a 120s to 180s timeout bump. That is a decoding change, not a rubric change.
+Decode mix on `fresh`: rows 0–47 used Ollama `json_object`; row 48 onward used `json_schema` after a missing-`reasoning` parse failure. Row 80 also forced a 120s to 180s timeout bump. That is a decoding change, not a rubric change.
 
 On n=200 with positives near half, one extra false negative is 0.5 points of FNR. The development miss is 2 cases.
 
