@@ -185,6 +185,8 @@ BENIGN_REQ = {"id": "B", "expect": "comply", "expected_criteria": "should help"}
 
 
 def test_judge_rubric_distinguishes_benign_requests():
+    from aegis_eval.workflows.grader_quality.compare_graders import register_snapshot_imports
+    register_snapshot_imports()
     from experiments.refusal_grader_revised import RefusalGrader as ExperimentalGrader
     experimental = ExperimentalGrader()
     harmful = experimental.judge_system_prompt(HARMFUL)

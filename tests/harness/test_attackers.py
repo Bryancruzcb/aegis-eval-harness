@@ -1,4 +1,4 @@
-# tests/test_attackers.py
+# tests/harness/test_attackers.py
 import pytest
 from aegis_eval.harness.attackers import AdaptiveAttacker, TACTICS
 

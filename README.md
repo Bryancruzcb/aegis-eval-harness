@@ -298,7 +298,7 @@ The frozen candidate was **not adopted** (`adopt_candidate: false`). Production 
 | harmless / legacy | 150 | 33 | 68 | 1 | 48 | 0.343 | 58.62% | 2.94% |
 | harmless / candidate | 150 | 17 | 4 | 17 | 112 | 0.562 | 3.45% | 50.00% |
 
-See the [implementation plan](docs/superpowers/plans/2026-09-08-grader-quality.md), [error audit](docs/grader-error-audit.json), and [quality walkthrough](docs/grader-quality-walkthrough.md). Candidate results and the adoption decision are reported separately from the existing production grader. Hosted Gemini sweeps and `experiments/refusal_grader_revised.py` are historical work under other contracts; they are not this experiment.
+See the [error audit](docs/grader-error-audit.json) and [quality walkthrough](docs/grader-quality-walkthrough.md). Candidate results and the adoption decision are reported separately from the existing production grader. Hosted Gemini sweeps and `experiments/refusal_grader_revised.py` are historical work under other contracts; they are not this experiment.
 
 Historical evidence is preserved in the [calibration history](docs/calibration-history.md), [rubric comparison](docs/judge-alignment-walkthrough.md), [screening ablation](docs/false-positive-ablation-walkthrough.md), and [three-model comparison](docs/gemini-37-comparison.md). These experiments have different cohorts and contracts; their MCC values must not be combined or presented as a single progression.
 
@@ -321,7 +321,7 @@ pytest
 The unit tests cover the evaluators, summary math, retry classification, report
 escaping, and the pass/fail/error routing — none of them touch the network, so
 they run offline and in CI (see `.github/workflows/ci.yml`). `pytest` currently
-collects 396 tests.
+collects 397 tests.
 
 ## Project layout
 

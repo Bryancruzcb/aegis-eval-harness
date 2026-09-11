@@ -19,7 +19,7 @@ jobs:
         run: pip install -r requirements-dev.txt
       - name: Lock the grader gate and parse retry
         # Offline. Do not run quality_eval.py here (needs Ollama + JAILJUDGE).
-        run: pytest tests/test_quality_eval.py tests/test_safety_grader.py tests/test_quality_report.py -q
+        run: pytest tests/workflows/test_quality_eval.py tests/workflows/test_safety_grader.py tests/workflows/test_quality_report.py -q
 
   test:
     runs-on: ubuntu-latest
