@@ -137,6 +137,28 @@ def test_execution_identity_records_judge_temperature():
     assert execution_identity()["runtime"]["judge_temperature"] == 0.0
 
 
+def test_execution_identity_records_provenance_version():
+    from compare_graders import PROVENANCE_VERSION, execution_identity
+    identity = execution_identity()
+    assert identity["provenance_version"] == PROVENANCE_VERSION == "aegis_eval.1"
+    assert "evaluators.py" in identity["files"]
+
+
+def test_load_variant_aliases_evaluators_and_graders(tmp_path):
+    from compare_graders import load_variant
+    path = tmp_path / "frozen.py"
+    path.write_text(
+        "from evaluators import JudgeParseError\n"
+        "from graders import Screen, Verdict\n"
+        "class RefusalGrader:\n"
+        "    def screen(self, *a, **k):\n"
+        "        return Screen(decision='judge', reason='x')\n",
+        encoding="utf-8",
+    )
+    grader = load_variant("frozen", path)
+    assert grader.screen().decision == "judge"
+
+
 def test_resume_rejects_changed_judge_temperature():
     from compare_graders import execution_identity, validate_resume
     identity = execution_identity()

@@ -24,7 +24,9 @@ CAP = 5.0
 MAX_OUTPUT = 2048
 INPUT_RATE = 0.75 / 1_000_000
 OUTPUT_RATE = 3.75 / 1_000_000
-OUTPUT = config.BASE_DIR / "output/hosted-comparison/gemini-3.7-flash-dev.json"
+PRIOR_LEDGER = config.BASE_DIR / "output" / "hosted-comparison" / "hosted-judge-dev.json"
+OUTPUT = (config.BASE_DIR / "output" / "hosted-comparison" /
+          comparison.PROVENANCE_VERSION / "gemini-3.7-flash-dev.json")
 SOURCE = config.BASE_DIR / "output/false-positive-ablation/refusal_grader_baseline.py"
 NAMES = ["local_two_stage", "hosted_two_stage"]
 
@@ -83,7 +85,8 @@ async def run():
     if source_hash != baseline["sources"]["two_stage"]["sha256"]:
         raise ValueError("Frozen rubric differs from local baseline")
     identity = {"model": MODEL, "source_sha256": source_hash,
-                "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                "runner_sha256": comparison.module_digest("hosted_comparison_37"),
+                "provenance_version": comparison.PROVENANCE_VERSION,
                 "dependencies": comparison.execution_identity(), "budget_usd": CAP,
                 "input_rate_per_million": INPUT_RATE * 1_000_000, "output_rate_per_million": OUTPUT_RATE * 1_000_000,
                 "thinking_level": "low", "max_output_tokens": MAX_OUTPUT,
@@ -91,7 +94,7 @@ async def run():
                 "local_baseline_sha256": hashlib.sha256((config.BASE_DIR / "output/false-positive-ablation/qwen-dev.json").read_bytes()).hexdigest()}
     payload = {"identity": identity, "started_utc": datetime.now(timezone.utc).isoformat(),
                "status": "running", "attempts": [], "records": []}
-    previous_path = OUTPUT.with_name("hosted-judge-dev.json")
+    previous_path = PRIOR_LEDGER
     if not OUTPUT.exists():
         if not previous_path.exists():
             raise ValueError("Prior spending ledger is required")

@@ -23,7 +23,8 @@ CAP = 5.0
 MAX_OUTPUT = 2048
 INPUT_RATE = 1.5 / 1_000_000
 OUTPUT_RATE = 9.0 / 1_000_000
-OUTPUT = config.BASE_DIR / "output/hosted-comparison/hosted-judge-dev.json"
+OUTPUT = (config.BASE_DIR / "output" / "hosted-comparison" /
+          comparison.PROVENANCE_VERSION / "hosted-judge-dev.json")
 SOURCE = config.BASE_DIR / "output/false-positive-ablation/refusal_grader_baseline.py"
 NAMES = ["local_two_stage", "hosted_two_stage"]
 
@@ -68,7 +69,8 @@ async def run():
     if source_hash != baseline["sources"]["two_stage"]["sha256"]:
         raise ValueError("Frozen rubric differs from local baseline")
     identity = {"model": MODEL, "source_sha256": source_hash,
-                "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                "runner_sha256": comparison.module_digest("hosted_comparison"),
+                "provenance_version": comparison.PROVENANCE_VERSION,
                 "dependencies": comparison.execution_identity(), "budget_usd": CAP,
                 "input_rate_per_million": INPUT_RATE * 1_000_000, "output_rate_per_million": OUTPUT_RATE * 1_000_000,
                 "thinking_level": "low", "max_output_tokens": MAX_OUTPUT,

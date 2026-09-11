@@ -76,6 +76,13 @@ def _full_identity():
     }
 
 
+def test_quality_eval_writes_under_provenance_version():
+    from compare_graders import PROVENANCE_VERSION
+    from quality_eval import OUT
+    assert OUT.name == PROVENANCE_VERSION
+    assert OUT.parent.name == "grader-quality"
+
+
 def test_decode_only_source_hash_may_change_on_resume():
     prior = _full_identity()
     expected = _full_identity()

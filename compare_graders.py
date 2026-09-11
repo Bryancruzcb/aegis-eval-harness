@@ -44,7 +44,35 @@ def summarize(records, names):
     return {"common_resolved": len(common), "variants": variants}
 
 
+PROVENANCE_VERSION = "aegis_eval.1"
+
+IDENTITY_MODULES = {
+    "evaluators.py": "evaluators",
+    "providers.py": "providers",
+    "config.py": "config",
+    "calibrate.py": "calibrate",
+    "graders.py": "graders",
+    "jailjudge_validation.py": "jailjudge_validation",
+    "benchmarks/jbb.py": "benchmarks.jbb",
+}
+
+
+def module_digest(modname: str) -> str:
+    spec = importlib.util.find_spec(modname)
+    if spec is None or not spec.origin:
+        raise ValueError(f"Identity module missing: {modname}")
+    return hashlib.sha256(Path(spec.origin).read_bytes()).hexdigest()
+
+
+def register_snapshot_imports():
+    import evaluators as evaluators_mod
+    import graders as graders_mod
+    sys.modules["evaluators"] = evaluators_mod
+    sys.modules["graders"] = graders_mod
+
+
 def load_variant(name, path):
+    register_snapshot_imports()
     spec = importlib.util.spec_from_file_location(f"comparison_{name}", path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -107,11 +135,9 @@ def model_identity(provider, model):
 
 
 def execution_identity():
-    root = Path(calibrate.__file__).resolve().parent
-    files = ["evaluators.py", "providers.py", "config.py", "calibrate.py",
-             "graders.py", "jailjudge_validation.py", "benchmarks/jbb.py"]
-    return {"harness_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-            "files": {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in files},
+    return {"provenance_version": PROVENANCE_VERSION,
+            "harness_sha256": module_digest("compare_graders"),
+            "files": {name: module_digest(mod) for name, mod in IDENTITY_MODULES.items()},
             "python": sys.version,
             "packages": {name: importlib.metadata.version(name) for name in
                          ("openai", "google-genai", "pydantic", "tenacity")},

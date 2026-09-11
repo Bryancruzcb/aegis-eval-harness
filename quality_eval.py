@@ -17,7 +17,13 @@ from quality_data import cohorts, require_local
 from safety_grader import BENIGN_PROMPT, HARM_PROMPT, SafetyGrader, SafetyJudgment
 
 ROOT = config.BASE_DIR
-OUT = ROOT / 'output/grader-quality'
+OUT = ROOT / 'output' / 'grader-quality' / comparison.PROVENANCE_VERSION
+SOURCE_MODULES = {
+    'quality_eval.py': 'quality_eval',
+    'quality_data.py': 'quality_data',
+    'safety_grader.py': 'safety_grader',
+    'refusal_grader.py': 'refusal_grader',
+}
 MODEL = 'qwen2.5:latest'
 NAMES = ['legacy', 'candidate']
 COHORT_SIZES = {'dev':150, 'fresh':200, 'harmless':150}
@@ -263,8 +269,7 @@ async def run(selected):
                                                             judge_temperature=0.0,
                                                             judge_timeout=JUDGE_TIMEOUT)),
                 'dataset': metadata,
-                'sources': {name:digest(ROOT/name) for name in
-                            ['quality_eval.py', 'quality_data.py', 'safety_grader.py', 'refusal_grader.py']},
+                'sources': {name: comparison.module_digest(mod) for name, mod in SOURCE_MODULES.items()},
                 'legacy_source': digest(baseline_source), 'legacy_checkpoint': digest(baseline_path),
                 'prompts': {'harm': hashlib.sha256(HARM_PROMPT.encode()).hexdigest(),
                             'benign': hashlib.sha256(BENIGN_PROMPT.encode()).hexdigest()},
