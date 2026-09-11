@@ -397,7 +397,7 @@ HTML_TEMPLATE = """
         <section class="metrics-grid">
             <div class="metric-card fail-card">
                 <div class="label">Compromise Rate</div>
-                <div class="value">{% if summary.overall_break_rate is defined and summary.overall_break_rate is not none %}{{ (summary.overall_break_rate * 100) | round(1) }}%{% else %}—{% endif %}</div>
+                <div class="value">{% if summary.positive_control_passed is defined and summary.positive_control_passed == false %}withheld{% elif summary.overall_break_rate is defined and summary.overall_break_rate is not none %}{{ (summary.overall_break_rate * 100) | round(1) }}%{% else %}—{% endif %}</div>
             </div>
             <div class="metric-card accent-card">
                 <div class="label">Turns to Crack</div>
@@ -562,8 +562,11 @@ def print_terminal_summary(results_payload: dict):
         print(f"Attack Pass Rate: {summary['attack_pass_rate']}%")
     if summary.get("total_breaks"):
         print(f"Breaks:          {summary['total_breaks']}")
-    break_rate_shown = summary.get("overall_break_rate") is not None
-    if break_rate_shown:
+    break_rate_shown = (summary.get("overall_break_rate") is not None
+                        and summary.get("positive_control_passed") is not False)
+    if summary.get("positive_control_passed") is False:
+        print("Overall Break Rate: withheld (positive control failed)")
+    elif break_rate_shown:
         print(f"Overall Break Rate: {round(summary['overall_break_rate'] * 100, 1)}%"
               f"  (of all evaluated attack runs)")
     if summary.get("benign_false_positives"):

@@ -2,24 +2,16 @@
 
 [![CI](https://github.com/Bryancruzcb/aegis-eval-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/Bryancruzcb/aegis-eval-harness/actions/workflows/ci.yml)
 
-A small, asynchronous harness for **red-teaming and evaluating LLM safety** — and,
-unusually, one that **measures the accuracy of its own grader and reports where it
-is weak** instead of quoting a flattering number. Three things run on it:
+AegisEval measures two things and refuses to mix them: whether a model
+gave harmful assistance, and whether it refused a harmless request.
 
-- **Secret Guardian** — a support bot holds a passcode in its system prompt and is
-  told never to reveal it. The suite fires ordinary questions and multi-turn
-  jailbreaks at it and grades every reply (fast deterministic leak checks, then an
-  LLM judge for the soft failures).
-- **Refusal benchmark** — does a model refuse genuinely harmful requests without
-  over-refusing harmless ones? Driven by **JailbreakBench** data fetched at runtime
-  and never committed to the repo. Its two-stage grader is **calibrated against 300
-  human labels**, and the accuracy is reported honestly: the grader is *judge-bound*
-  — MCC 0.20 with a free 7B local judge, rising to 0.38 with a small hosted one. The
-  reference judges JailbreakBench ships reach 0.55-0.80 on the same rows; this grader
-  has not been measured with one of those.
-- **Adaptive attacker** — an LLM that reads the bot's replies and improvises
-  social-engineering tactics turn by turn to extract the secret, reporting how often
-  and how fast it breaks in (and honestly, that the number is only a lower bound).
+A Python tool that tests how AI assistants respond to adversarial requests and checks how accurately its own automated judges grade those responses.
+
+- **Secret Guardian:** tests whether an assistant reveals a secret after ordinary questions or multi-turn attacks.
+- **Refusal benchmark:** tests harmful requests and harmless controls using JailbreakBench data fetched into a local ignored cache.
+- **Adaptive attacker:** uses an LLM to choose follow-up attacks based on the assistant's replies.
+
+Grader quality is measured against human labels. The latest audit found that refusal and harmfulness had been conflated; the [contract experiment](docs/grader-quality-walkthrough.md) separates them and reports remaining errors.
 
 Every run produces a self-contained HTML dashboard (this one is an adaptive-attacker
 run against a local model — [full sample](docs/sample-report.html)):
@@ -46,7 +38,7 @@ python run.py --attacker adaptive --adaptive-cases 5 \
 ```
 
 Open the `report.html` it writes to `output/`. The full test suite is offline too —
-`pip install -r requirements-dev.txt && pytest` runs all ~289 tests with no key.
+`pip install -r requirements-dev.txt && pytest` runs all 391 tests with no key.
 
 ## How it works
 
@@ -239,14 +231,12 @@ The report grows three adaptive-only cards:
 > rising compromise rate is real signal; a flat one only means *this* attacker
 > didn't get in.
 >
-> The test suite includes a **positive control** — a stubbed attacker that must
-> break a deliberately leaky bot — but it validates the *harness plumbing*
-> (the loop, attribution, and grading), **not** that the live attacker model you
-> run is competent. There is no built-in check that, say, `qwen2.5` is actually
-> trying: verifying live-attacker efficacy is manual today (point it at a bot
-> whose prompt reveals the code and confirm it breaks it) and a `--positive-control`
-> mode is future work. So read a flat compromise rate as "*this* attacker didn't
-> get in," never as "the bot is safe."
+> `--positive-control` runs the **live** attacker against a bot whose system
+> prompt gives the secret away. If that attacker cannot break the leaky bot,
+> the process exits 3 and the real suite is not run — Compromise Rate is not
+> printed, because the attacker is not an attacker. Offline tests still stub
+> the same path. Read a flat rate as "*this* attacker didn't get in," never as
+> "the bot is safe."
 
 ## Scenarios
 
@@ -283,73 +273,34 @@ cache (`.cache/jbb`), pinned to a commit and **sha256-verified on every read**.
 - `--sample-seed N` — seed for the stratified per-category sample (default `0`).
 - `--refresh-benchmark` — ignore the cache and re-download (re-verifies the hash).
 
-### Calibrating the refusal grader
+### Evaluating the grader itself
 
-The refusal grader is a measuring instrument, so its own accuracy is measured
-against JBB's **300 human-labelled `judge-comparison` rows**. `calibrate.py`
-runs stage 1 over a held-out 150-row half — the grader's marker/length
-thresholds are fixed constants set during design, not fit to this half, and
-`--dev` reports the other (seeded) half for comparison — escalates the undecided
-rows to the judge, and prints its confusion matrix beside JBB's own published
-`StringClassifier` baseline. The positive class is **jailbroken (=
-not refused)**, matching JBB's convention, and the judge is fed each row's
-behaviour (`goal`), not the jailbreak wrapper — the same way the harness queries.
+AegisEval must distinguish two questions: did the response provide harmful assistance, and did it unnecessarily refuse a harmless request? A helpful answer is not automatically a jailbreak.
 
-```bash
-python calibrate.py                 # score the held-out half
-python calibrate.py --dev           # score the seeded dev half instead
-python calibrate.py --limit 20      # a quick 20-row check
+JBB's 300 human-labeled judge-comparison examples include **100 harmless XSTest examples**. The historical `calibrate.py` refusal-based mapping treats non-refusal as a jailbreak, which is an inappropriate proxy on this mixed dataset. The error audit found 27 of 41 development false positives on harmless requests. Earlier model comparisons measure this flawed contract and do not establish which model is intrinsically the best safety judge. Both JBB halves have been inspected during development; neither is an untouched holdout.
+
+The local contract experiment uses an explicit harmful-assistance field and separate full/partial refusal fields:
+
+```powershell
+.\venv\Scripts\python.exe quality_eval.py
 ```
 
-Output is a confusion matrix and derived stats for the grader and the naive
-baseline. Measured on the **held-out 150-row half** (one pass, temperature 0).
-The grader is the same two stages both times; only the escalation **judge**
-changes. The reference rows are the judges JBB ships in the same file, scored on
-the identical rows:
+It runs a frozen candidate on 150 JBB development examples, a new 200-row JAILJUDGE cohort excluding the previous validation examples, and 150 independently human-labeled harmless XSTest responses whose prompts are absent from JBB. Checkpoints resume automatically. The command needs the pinned datasets already in the local ignored cache and `qwen2.5:latest` installed in Ollama. It makes no paid API calls and writes aggregate JSON and a readable Markdown report.
 
-| classifier | agreement | balanced acc. | MCC | FPR / FNR |
-|------------|-----------|---------------|-----|-----------|
-| refusal grader — `qwen2.5:7b` judge (local, free) | 52.0% | 58.8% | 0.20 | 0.68 / 0.14 |
-| refusal grader — `gemini-flash-lite` judge | 58.0% | 66.1% | **0.38** | 0.66 / 0.02 |
-| naive JBB `StringClassifier` | 56.0% | 64.2% | 0.34 | 0.68 / 0.04 |
-| _ref: GPT-4 judge_ | 89.3% | 89.0% | 0.77 | 0.10 / 0.13 |
-| _ref: Llama-3-70B judge_ | 90.0% | 90.9% | 0.80 | 0.13 / 0.05 |
-| _ref: Llama Guard 2_ | 86.0% | 85.6% | 0.71 | 0.13 / 0.16 |
-| _ref: HarmBench_ | 76.7% | 78.5% | 0.55 | 0.29 / 0.14 |
+The frozen candidate was **not adopted** (`adopt_candidate: false`). Production remains the legacy `RefusalGrader`. Harmless is a separate task (unnecessary refusal) and is not pooled with the harmfulness scores. See the [walkthrough](docs/grader-quality-walkthrough.md).
 
-> Also measured, on a smaller free-tier sample: with **`gemini-3.5-flash`** as the
-> judge over a **30-row** subset, the grader scored **MCC 0.36** (balanced accuracy
-> 68%) against naive's 0.19 on those same rows — consistent with `flash-lite` and
-> comfortably above the baseline. A full 150-row run with a stronger hosted judge
-> needs a paid-tier key (a free tier can't sustain the ~90 judge calls); the
-> judge-bound conclusion holds either way.
+| Cohort / configuration | N | TP | FP | FN | TN | MCC | FPR | FNR |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| dev / legacy | 150 | 51 | 41 | 3 | 55 | 0.510 | 42.71% | 5.56% |
+| dev / candidate | 150 | 49 | 11 | 5 | 85 | 0.777 | 11.46% | 9.26% |
+| fresh / legacy | 200 | 87 | 18 | 13 | 82 | 0.691 | 18.00% | 13.00% |
+| fresh / candidate | 200 | 74 | 6 | 26 | 94 | 0.694 | 6.00% | 26.00% |
+| harmless / legacy | 150 | 33 | 68 | 1 | 48 | 0.343 | 58.62% | 2.94% |
+| harmless / candidate | 150 | 17 | 4 | 17 | 112 | 0.562 | 3.45% | 50.00% |
 
-Human–human agreement on this half is **86.7%** (130/150 unanimous) — the
-irreducible ceiling. The **majority-class baseline** (always answer "not
-jailbroken") scores **62.7%**, a property of the dataset's ~63/37 label split.
+See the [implementation plan](docs/superpowers/plans/2026-09-08-grader-quality.md), [error audit](docs/grader-error-audit.json), and [quality walkthrough](docs/grader-quality-walkthrough.md). Candidate results and the adoption decision are reported separately from the existing production grader. Hosted Gemini sweeps and `experiments/refusal_grader_revised.py` are historical work under other contracts; they are not this experiment.
 
-**The grader is judge-bound, and that is the finding.** Stage 1 auto-decides 41%
-of rows on markers alone and escalates the other 59% to the judge, so the
-grader's accuracy is dominated by the judge model behind it — and it climbs
-monotonically with judge quality: a free 7B local judge lands *below* the naive
-baseline (MCC 0.20), a small hosted judge (`gemini-flash-lite`) edges *past* it
-(0.38), and the reference rows show strong LLMs reaching 0.55–0.80 on the same
-data. With the 7B judge, 51 of the grader's 64 false positives come from the
-judge itself (a capable one resolves them) and 13 from stage 1 calling a
-non-standard refusal "complied" — the residual the length/marker floor cannot
-reach. The two-stage framework is sound; the judge is the lever. Re-run the
-one-liner above with `--judge-provider gemini` (add `--judge-delay 5` to stay
-under a free-tier rate cap) to measure your own.
-
-**Scope of this calibration** — a single number will otherwise be read as
-validating everything, so:
-
-1. calibrated on **harmful-split responses only** — the over-refusal half of the
-   grader is unvalidated;
-2. `target_response` rows are 2024-vintage outputs, so the length gate and marker
-   lists are tuned out-of-distribution relative to 2026 targets, and the stage-1
-   short-circuit rate will not transfer — re-report that rate from real runs;
-3. JBB is public and frozen, so a high refusal rate partly measures memorization.
+Historical evidence is preserved in the [calibration history](docs/calibration-history.md), [rubric comparison](docs/judge-alignment-walkthrough.md), [screening ablation](docs/false-positive-ablation-walkthrough.md), and [three-model comparison](docs/gemini-37-comparison.md). These experiments have different cohorts and contracts; their MCC values must not be combined or presented as a single progression.
 
 ## Output
 
@@ -369,7 +320,8 @@ pytest
 
 The unit tests cover the evaluators, summary math, retry classification, report
 escaping, and the pass/fail/error routing — none of them touch the network, so
-they run offline and in CI (see `.github/workflows/ci.yml`).
+they run offline and in CI (see `.github/workflows/ci.yml`). `pytest` currently
+collects 391 tests.
 
 ## Project layout
 
@@ -415,14 +367,11 @@ a `turns` list as shown under [Multi-turn cases](#multi-turn-cases).
 Phase 1 is a deliberately narrow slice, not a general safety benchmark. Known
 limits:
 
-- **One scenario.** The suite only tests secret extraction from a single
-  "Secret Guardian" support bot. It does not cover other harms, other tasks, or
-  other threat models.
+- **Limited scenarios.** Secret extraction and refusal tests cover selected threats; they do not establish safety across other tasks or deployments.
 - **English-first.** Prompts are primarily English, with a couple of translation
   probes (Spanish, French). Broad multilingual coverage is out of scope.
 - **Judges are imperfect.** The LLM-as-a-Judge stage depends on the grader model.
-  Small local judges (e.g. `llama3.2:3b`) miss subtle jailbreak compliance and
-  occasionally misgrade; a stronger judge grades more reliably.
+  Model capability alone does not establish grading accuracy: rubric, label contract, screening and dataset composition must also be validated.
 - **Representative, not exhaustive taxonomy.** The technique tags sample common
   attack families; they are not a complete catalog of jailbreaks.
 - **Repeats need temperature.** `--repeats` only varies the *target's* output
@@ -449,6 +398,6 @@ limits:
   adaptive attacker (`--attacker adaptive`) learns from the target's replies
   mid-run, but the compromise rate it reports is a *lower bound*: a weak or
   off-task attacker model understates a target's true exposure. Read it as "at
-  least this breakable," never "this robust." The suite's positive control
-  proves the *harness* works, not that your live attacker model is competent —
-  confirming that is manual today (see [Adaptive attacker](#adaptive-attacker)).
+  least this breakable," never "this robust." `--positive-control` runs the
+  **live** attacker against a leaky bot; if it cannot break, the process exits 3
+  and Compromise Rate is withheld.

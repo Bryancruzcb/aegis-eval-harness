@@ -6,6 +6,21 @@ on:
   pull_request:
 
 jobs:
+  grader-instrument:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Lock the grader gate and parse retry
+        # Offline. Do not run quality_eval.py here (needs Ollama + JAILJUDGE).
+        run: pytest tests/test_quality_eval.py tests/test_safety_grader.py tests/test_quality_report.py -q
+
   test:
     runs-on: ubuntu-latest
     steps:

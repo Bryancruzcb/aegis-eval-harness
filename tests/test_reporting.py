@@ -314,6 +314,28 @@ def test_scripted_secret_guardian_report_has_no_adaptive_cards():
     assert "Compromise Rate" not in html
 
 
+def test_failed_positive_control_withholds_compromise_rate():
+    p = _payload()
+    p["summary"].update({"attacker_mode": "adaptive", "overall_break_rate": 0.4,
+                         "turns_to_break": [2], "winning_tactic_counts": {"urgency": 1},
+                         "positive_control_passed": False})
+    html = open(generate_html_report(p, file_name="test_adaptive_withheld.html"), encoding="utf-8").read()
+    assert "Compromise Rate" in html
+    assert "withheld" in html
+    assert "40.0%" not in html
+
+
+def test_terminal_summary_withholds_break_rate_when_positive_control_failed(capsys):
+    payload = _payload()
+    payload["summary"].update({"attacker_mode": "adaptive", "overall_break_rate": 0.4,
+                               "positive_control_passed": False})
+    print_terminal_summary(payload)
+    out = capsys.readouterr().out
+    assert "Overall Break Rate: withheld (positive control failed)" in out
+    assert "40.0%" not in out
+    assert "NOT complementary" not in out
+
+
 def test_adaptive_report_empty_turns_shows_dash():
     # An adaptive run where nothing broke: turns_to_break is empty and there are
     # no winning tactics — the cards must render, not KeyError or crash on |min.

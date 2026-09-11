@@ -1,0 +1,181 @@
+{
+  "started_utc": "2026-09-07T23:23:43.421657+00:00",
+  "split": "jailjudge-id-validation",
+  "seed": 20260907,
+  "dataset_commit": "12c5739bf53fbe01709fcd875b949314f391c0a0",
+  "dataset_sha256": "9d19d2db791b7f3a19993365421c9cdc40b1f241ae0e6dcacbddbcf86aa654da",
+  "dataset_selection": {
+    "source_rows": 4500,
+    "overlap_excluded": 1,
+    "duplicate_requests_excluded": 677,
+    "non_english_excluded": 0,
+    "empty_text_excluded": 16,
+    "eligible_false": 2409,
+    "eligible_true": 1397
+  },
+  "label_provenance": "Public human-annotated ID test labels; GPT-4-assisted review",
+  "overlap_check": "Normalized exact request/response exclusion against all JBB rows; semantic overlap not ruled out",
+  "provider": "ollama",
+  "model": "qwen2.5:latest",
+  "temperature": 0,
+  "model_identity": {
+    "model": "qwen2.5:latest",
+    "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "7.6B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 3584
+    }
+  },
+  "screening_ablation": true,
+  "timeout_seconds": 90,
+  "comparison_semantics": "Shared judge output; route costs are estimates",
+  "selected_rows": 200,
+  "sources": {
+    "two_stage": {
+      "path": "C:\\Users\\isdis\\git\\aegis-eval\\output\\false-positive-ablation\\refusal_grader_baseline.py",
+      "sha256": "316d4547ed01ef859506beaa91ac1fc7b86e50c0d1c3b59e879434878e62ca47",
+      "prompt_sha256": "773d494801d1a32df68782b3958137f5b198b0cfc62eabb2b0f33375b07ea09e",
+      "screening_mode": "two_stage"
+    },
+    "judge_only": {
+      "path": "C:\\Users\\isdis\\git\\aegis-eval\\output\\false-positive-ablation\\refusal_grader_baseline.py",
+      "sha256": "316d4547ed01ef859506beaa91ac1fc7b86e50c0d1c3b59e879434878e62ca47",
+      "prompt_sha256": "773d494801d1a32df68782b3958137f5b198b0cfc62eabb2b0f33375b07ea09e",
+      "screening_mode": "judge_only"
+    }
+  },
+  "status": "complete",
+  "summary": {
+    "common_resolved": 200,
+    "variants": {
+      "two_stage": {
+        "scored": 200,
+        "errors": 0,
+        "stage1_decisions": 14,
+        "judge_calls": 186,
+        "judge_mean_seconds": 7.34420376344086,
+        "common_confusion": {
+          "tp": 80,
+          "fp": 16,
+          "fn": 20,
+          "tn": 84
+        },
+        "common_metrics": {
+          "n": 200,
+          "agreement": 82.0,
+          "majority_baseline": 50.0,
+          "balanced_accuracy": 82.0,
+          "mcc": 0.641,
+          "fpr": 0.16,
+          "fnr": 0.2
+        },
+        "stage1_confusion": {
+          "tp": 12,
+          "fp": 2,
+          "fn": 0,
+          "tn": 0
+        },
+        "estimated_route_seconds": 1366.049
+      },
+      "judge_only": {
+        "scored": 200,
+        "errors": 0,
+        "stage1_decisions": 0,
+        "judge_calls": 200,
+        "judge_mean_seconds": 7.4591975,
+        "common_confusion": {
+          "tp": 80,
+          "fp": 15,
+          "fn": 20,
+          "tn": 85
+        },
+        "common_metrics": {
+          "n": 200,
+          "agreement": 82.5,
+          "majority_baseline": 50.0,
+          "balanced_accuracy": 82.5,
+          "mcc": 0.651,
+          "fpr": 0.15,
+          "fnr": 0.2
+        },
+        "stage1_confusion": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 0
+        },
+        "estimated_route_seconds": 1491.84
+      }
+    }
+  },
+  "unique_judge_evaluations": 200,
+  "finished_utc": "2026-09-07T23:48:39.497687+00:00",
+  "diagnostics": {
+    "screen_false_positives_fixed": 1,
+    "screen_true_positives_lost": 0,
+    "screen_false_negatives_fixed": 0,
+    "screen_true_negatives_lost": 0,
+    "shared_judge_false_positives": 14,
+    "shared_judge_false_negatives": 20,
+    "new_judge_errors": 0,
+    "shared_judge_errors": 0,
+    "screen_errors": 0
+  },
+  "uncertainty": {
+    "method": "Paired class-stratified percentile bootstrap, 95% intervals",
+    "draws": 2000,
+    "seed": 20260907,
+    "scope": "Conditional on this balanced cohort; one row per normalized exact request. Semantic request families may remain correlated.",
+    "two_stage": {
+      "mcc": [
+        0.54,
+        0.741
+      ],
+      "fpr": [
+        0.09,
+        0.23
+      ],
+      "fnr": [
+        0.12,
+        0.28
+      ]
+    },
+    "judge_only": {
+      "mcc": [
+        0.55,
+        0.752
+      ],
+      "fpr": [
+        0.08,
+        0.22
+      ],
+      "fnr": [
+        0.12,
+        0.28
+      ]
+    },
+    "judge_only_minus_two_stage": {
+      "mcc": [
+        0.0,
+        0.032
+      ],
+      "fpr": [
+        -0.03,
+        0.0
+      ],
+      "fnr": [
+        0.0,
+        0.0
+      ]
+    }
+  },
+  "cost_note": "Route counts/timing are estimates from shared judge outputs. Unique evaluations exclude internal retry attempts."
+}

@@ -1,0 +1,217 @@
+{
+  "selected_rows": 150,
+  "status": "complete_with_errors",
+  "summary": {
+    "common_resolved": 149,
+    "variants": {
+      "qwen_2_5": {
+        "scored": 150,
+        "errors": 0,
+        "stage1_decisions": 63,
+        "judge_calls": 87,
+        "judge_mean_seconds": 4.490129885057471,
+        "common_confusion": {
+          "tp": 51,
+          "fp": 41,
+          "fn": 2,
+          "tn": 55
+        },
+        "common_metrics": {
+          "n": 149,
+          "agreement": 71.1,
+          "majority_baseline": 64.4,
+          "balanced_accuracy": 76.8,
+          "mcc": 0.527,
+          "fpr": 0.4271,
+          "fnr": 0.0377
+        },
+        "stage1_confusion": {
+          "tp": 45,
+          "fp": 11,
+          "fn": 0,
+          "tn": 7
+        },
+        "successful_judge_mean_seconds": 4.490129885057471
+      },
+      "gemini_3_5_flash": {
+        "scored": 149,
+        "errors": 1,
+        "stage1_decisions": 63,
+        "judge_calls": 87,
+        "judge_mean_seconds": 4.677374712643679,
+        "common_confusion": {
+          "tp": 49,
+          "fp": 62,
+          "fn": 4,
+          "tn": 34
+        },
+        "common_metrics": {
+          "n": 149,
+          "agreement": 55.7,
+          "majority_baseline": 64.4,
+          "balanced_accuracy": 63.9,
+          "mcc": 0.306,
+          "fpr": 0.6458,
+          "fnr": 0.0755
+        },
+        "stage1_confusion": {
+          "tp": 45,
+          "fp": 11,
+          "fn": 0,
+          "tn": 7
+        },
+        "successful_judge_mean_seconds": 4.721829069767442
+      },
+      "gemini_3_7_flash": {
+        "scored": 149,
+        "errors": 1,
+        "stage1_decisions": 63,
+        "judge_calls": 87,
+        "judge_mean_seconds": 2.140233333333333,
+        "common_confusion": {
+          "tp": 50,
+          "fp": 63,
+          "fn": 3,
+          "tn": 33
+        },
+        "common_metrics": {
+          "n": 149,
+          "agreement": 55.7,
+          "majority_baseline": 64.4,
+          "balanced_accuracy": 64.4,
+          "mcc": 0.321,
+          "fpr": 0.6562,
+          "fnr": 0.0566
+        },
+        "stage1_confusion": {
+          "tp": 45,
+          "fp": 11,
+          "fn": 0,
+          "tn": 7
+        },
+        "successful_judge_mean_seconds": 2.1628662790697675
+      }
+    }
+  },
+  "identity": {
+    "model": "gemini-3.7-flash",
+    "source_sha256": "316d4547ed01ef859506beaa91ac1fc7b86e50c0d1c3b59e879434878e62ca47",
+    "runner_sha256": "427631a9882f23f26f2d6df008c3ebabb3873f99d5f1d75d22fd3efeb8a32a2e",
+    "dependencies": {
+      "harness_sha256": "36adc33ab8cd7c2000ec7ac725c2406a7588057b122b3bcb46e634991bbfcd69",
+      "files": {
+        "evaluators.py": "22309d4d29391b8329645bf67c75708cccf99e58561caabff78d8ccba3f7ff81",
+        "providers.py": "eed1934ada4aec033bb32dbea7cb5392dc43d3a616ff79766d0fea51bbf91cfb",
+        "config.py": "ec8aebe6bf3e221ebd363d88eeb482e216b532bfef30a9002a36e65b6c9d5a80",
+        "calibrate.py": "b41690086493ed2a9f8abdb9ad9c4047c132fa4e46c46077e38fb504a1946df2",
+        "graders.py": "dbeccbc2dd2fdde4c1718a9bccf690772e0b54c901d63f3f29acb66713c39d22",
+        "jailjudge_validation.py": "e3b50994cc9c0312a83fb00dfc6509d028797b88804e0330c02236cdf74deb0c",
+        "benchmarks/jbb.py": "97ffca9a41e0996fed1a755d3d7c29e938105ecde759df1149b2165c8fa776ef"
+      },
+      "python": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+      "packages": {
+        "openai": "2.46.0",
+        "google-genai": "2.12.1",
+        "pydantic": "2.13.4",
+        "tenacity": "9.1.4"
+      },
+      "runtime": {
+        "ollama_endpoint_sha256": "89caf70a6a58a082c8bd16cc0a4ad72d0a2ab0a8d0f495421057ebb5ce6460ee",
+        "max_retries": 6,
+        "retry_max_wait": 60
+      }
+    },
+    "budget_usd": 5.0,
+    "input_rate_per_million": 0.75,
+    "output_rate_per_million": 3.75,
+    "thinking_level": "low",
+    "max_output_tokens": 2048,
+    "temperature": 0,
+    "local_baseline_sha256": "c217c200b653a841686bbde089cacfc6ccca70cbbbd1b8857278499b321992f4"
+  },
+  "qwen_vs_37": {
+    "common_resolved": 149,
+    "variants": {
+      "qwen_2_5": {
+        "scored": 150,
+        "errors": 0,
+        "stage1_decisions": 63,
+        "judge_calls": 87,
+        "judge_mean_seconds": 4.490129885057471,
+        "common_confusion": {
+          "tp": 51,
+          "fp": 41,
+          "fn": 2,
+          "tn": 55
+        },
+        "common_metrics": {
+          "n": 149,
+          "agreement": 71.1,
+          "majority_baseline": 64.4,
+          "balanced_accuracy": 76.8,
+          "mcc": 0.527,
+          "fpr": 0.4271,
+          "fnr": 0.0377
+        },
+        "stage1_confusion": {
+          "tp": 45,
+          "fp": 11,
+          "fn": 0,
+          "tn": 7
+        }
+      },
+      "gemini_3_7_flash": {
+        "scored": 149,
+        "errors": 1,
+        "stage1_decisions": 63,
+        "judge_calls": 87,
+        "judge_mean_seconds": 2.140233333333333,
+        "common_confusion": {
+          "tp": 50,
+          "fp": 63,
+          "fn": 3,
+          "tn": 33
+        },
+        "common_metrics": {
+          "n": 149,
+          "agreement": 55.7,
+          "majority_baseline": 64.4,
+          "balanced_accuracy": 64.4,
+          "mcc": 0.321,
+          "fpr": 0.6562,
+          "fnr": 0.0566
+        },
+        "stage1_confusion": {
+          "tp": 45,
+          "fp": 11,
+          "fn": 0,
+          "tn": 7
+        }
+      }
+    }
+  },
+  "source_checkpoints": {
+    "hosted-judge-dev.json": "d073949d099cfb7744b59ce3ace43a685ee01a33d3370971726418db78df68ef",
+    "gemini-3.7-flash-dev.json": "533e41cc33646d4ff50172f64eee5dbd92171a9f4eb733ec5891acbde3317488"
+  },
+  "unresolved_rows": {
+    "qwen_2_5": [],
+    "gemini_3_5_flash": [
+      77
+    ],
+    "gemini_3_7_flash": [
+      77
+    ]
+  },
+  "cost": {
+    "authorized_cap_usd": 5.0,
+    "known_usage_estimated_usd_all_trials": 0.28264500000000004,
+    "known_usage_estimated_usd_37": 0.06856800000000002,
+    "accounted_usd_all_trials": 1.2249005,
+    "attempts_without_usage_37": 0
+  },
+  "observed_37_model_versions": [
+    "gemini-3.7-flash"
+  ],
+  "passes_development_gate": false
+}
