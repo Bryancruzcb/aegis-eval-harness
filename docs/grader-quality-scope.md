@@ -26,9 +26,9 @@ figures with the table in README.
 - `docs/calibration-history.md`, `docs/judge-alignment-*.md`,
   `docs/hosted-judge-*.md`, `docs/gemini-37-*.md`,
   `docs/false-positive-*.md`
-- The uncommitted `refusal_grader.py` prompt/schema field-order edit is
-  leftover from that alignment pass. It is not an adoption of `SafetyGrader`
-  and it is not part of the local Qwen contract numbers.
+- The `refusal_grader.py` prompt/schema field-order edit is leftover from
+  that alignment pass. It is not an adoption of `SafetyGrader` and it is
+  not part of the local Qwen contract numbers.
 
 ## Do not
 

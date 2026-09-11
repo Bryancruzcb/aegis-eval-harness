@@ -173,7 +173,7 @@ tests/
   test_reporting.py           # reporter plus CLI redaction; package imports
 docs/
   architecture.md             # short map, added with the skeleton
-  superpowers/                # historical specs stay put
+  superpowers/specs/2026-09-11-project-layout-design.md
 ```
 
 Root after the skeleton still has `requirements.txt`, `requirements-dev.txt`, `pytest.ini`, `env.example`, `LICENSE`, `README.md`, `.github/`, `docs/`, `output/` (ignored), `.cache/` (ignored).
