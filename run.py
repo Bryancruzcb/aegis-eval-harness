@@ -325,6 +325,7 @@ async def main_async() -> int:
     # Positive control: before spending a real run, prove the LIVE attacker can
     # extract a secret from a bot that gives it away. If it can't, its compromise
     # numbers mean nothing — refuse to report them and exit with a distinct code.
+    control_result = None
     if args.positive_control:
         print("Running positive control (attacker vs. a deliberately leaky bot)...")
         control = await run_positive_control(
@@ -339,6 +340,7 @@ async def main_async() -> int:
             print(f"{GREEN}✔ Positive control passed: the attacker broke the leaky bot"
                   f"{in_turns} ({control['breaks']}/{control['attempts']} attempts). "
                   f"Proceeding with the real run.{RESET}")
+            control_result = control
         else:
             print(f"{RED}✘ POSITIVE CONTROL FAILED: the attacker could not extract the secret "
                   f"even from a bot that gives it away (0/{control['attempts']} attempts). Its "
@@ -367,6 +369,13 @@ async def main_async() -> int:
         return 2
 
     summary = payload["summary"]
+    if control_result is not None:
+        summary["positive_control_passed"] = True
+        summary["positive_control"] = {
+            "breaks": control_result["breaks"],
+            "attempts": control_result["attempts"],
+            "turns_to_break": control_result["turns_to_break"],
+        }
 
     # Redact harmful-prompt responses (refusal scenario, unless --include-responses)
     # BEFORE either artifact is written, so neither the JSON nor the HTML ships them.

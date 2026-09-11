@@ -124,3 +124,31 @@ async def test_passed_control_proceeds_to_real_suite(monkeypatch):
     code = await run_mod.main_async()
     assert called["suite"] is True              # control passed -> real run proceeded
     assert code == 2                            # (from the stubbed error payload)
+
+
+async def test_passed_control_stamps_compromise_publish_flag(monkeypatch, tmp_path):
+    args = _adaptive_control_args()
+    monkeypatch.setattr(run_mod, "parse_args", lambda argv=None: args)
+
+    async def passed_control(*a, **k):
+        return {"passed": True, "breaks": 2, "turns_to_break": 2, "attempts": 3}
+    monkeypatch.setattr(run_mod, "run_positive_control", passed_control)
+
+    payload = {"summary": {"total": 0, "passed": 0, "failed": 0, "errors": 0,
+                           "pass_rate": 0, "timestamp": "t", "target": "x", "judge": "y",
+                           "total_time_seconds": 0, "average_latency_seconds": 0,
+                           "evaluated": 0}}
+
+    async def suite(*a, **k):
+        return payload
+    monkeypatch.setattr(run_mod, "run_suite", suite)
+    monkeypatch.setattr(run_mod, "maybe_redact_responses", lambda p, a: p)
+    monkeypatch.setattr(run_mod, "print_terminal_summary", lambda p: None)
+    monkeypatch.setattr(run_mod, "generate_html_report", lambda p: str(tmp_path / "r.html"))
+    monkeypatch.setattr(run_mod, "_archive", lambda *a, **k: None)
+    monkeypatch.setattr(run_mod.config, "OUTPUT_DIR", tmp_path)
+
+    code = await run_mod.main_async()
+    assert code == 0
+    assert payload["summary"]["positive_control_passed"] is True
+    assert payload["summary"]["positive_control"]["breaks"] == 2
