@@ -125,4 +125,3 @@ async def query_target(prompt: str, provider: str = None, model: str = None,
         [{"role": "user", "content": prompt}], provider=provider, model=model,
         temperature=temperature, system_prompt=system_prompt
     )
-

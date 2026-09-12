@@ -58,6 +58,7 @@ def _full_identity():
         'legacy_source': 'a',
         'legacy_checkpoint': 'b',
         'execution': {
+            'provenance_version': 'aegis_eval.1',
             'harness_sha256': 'h',
             'files': {'evaluators.py': 'e1', 'providers.py': 'p'},
             'python': '3.11',
@@ -97,6 +98,18 @@ def test_safety_grader_hash_change_fails_incomplete_resume():
     prior = _full_identity()
     expected = _full_identity()
     expected['sources']['safety_grader.py'] = 's2'
+    with pytest.raises(ValueError, match='Resume identity changed'):
+        check_resume_identity(prior, expected)
+
+
+@pytest.mark.parametrize("prior_version", [None, "aegis_eval.0"])
+def test_provenance_version_change_fails_incomplete_resume(prior_version):
+    prior = _full_identity()
+    expected = _full_identity()
+    if prior_version is None:
+        prior['execution'].pop('provenance_version')
+    else:
+        prior['execution']['provenance_version'] = prior_version
     with pytest.raises(ValueError, match='Resume identity changed'):
         check_resume_identity(prior, expected)
 

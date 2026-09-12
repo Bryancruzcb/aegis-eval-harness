@@ -38,7 +38,7 @@ python run.py --attacker adaptive --adaptive-cases 5 \
 ```
 
 Open the `report.html` it writes to `output/`. The full test suite is offline too —
-`pip install -r requirements-dev.txt && pytest` runs all 397 tests with no key.
+`pip install -r requirements-dev.txt && pytest` runs all 418 tests with no key.
 
 ## How it works
 
@@ -321,7 +321,7 @@ pytest
 The unit tests cover the evaluators, summary math, retry classification, report
 escaping, and the pass/fail/error routing — none of them touch the network, so
 they run offline and in CI (see `.github/workflows/ci.yml`). `pytest` currently
-collects 397 tests.
+collects 418 tests.
 
 ## Project layout
 

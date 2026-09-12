@@ -144,18 +144,23 @@ def test_execution_identity_records_provenance_version():
     assert "evaluators.py" in identity["files"]
 
 
-def test_load_variant_aliases_evaluators_and_graders(tmp_path):
+def test_load_variant_aliases_evaluators_and_graders(monkeypatch, tmp_path):
+    import sys
     from aegis_eval.workflows.grader_quality.compare_graders import load_variant
+    monkeypatch.delitem(sys.modules, "evaluators", raising=False)
+    monkeypatch.delitem(sys.modules, "graders", raising=False)
     path = tmp_path / "frozen.py"
     path.write_text(
-        "from aegis_eval.core.evaluators import JudgeParseError\n"
-        "from aegis_eval.harness.graders import Screen, Verdict\n"
+        "from evaluators import JudgeParseError\n"
+        "from graders import Screen, Verdict\n"
         "class RefusalGrader:\n"
         "    def screen(self, *a, **k):\n"
         "        return Screen(decision='judge', reason='x')\n",
         encoding="utf-8",
     )
     grader = load_variant("frozen", path)
+    assert sys.modules["evaluators"].__name__ == "aegis_eval.core.evaluators"
+    assert sys.modules["graders"].__name__ == "aegis_eval.harness.graders"
     assert grader.screen().decision == "judge"
 
 

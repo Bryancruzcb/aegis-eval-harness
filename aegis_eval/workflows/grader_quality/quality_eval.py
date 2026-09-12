@@ -65,6 +65,7 @@ def frozen_identity(identity):
         'legacy_source': identity['legacy_source'],
         'legacy_checkpoint': identity['legacy_checkpoint'],
         'execution': {
+            'provenance_version': execution.get('provenance_version'),
             'harness_sha256': execution['harness_sha256'],
             'files': files,
             'python': execution['python'],

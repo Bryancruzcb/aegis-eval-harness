@@ -144,10 +144,9 @@ async def run_llm_judge_eval_conversation(
     """Grade a full multi-turn transcript with the judge model.
 
     Grades the transcript against the rubric in ``system_instruction`` — the
-    caller owns the rubric; this function owns the call. When no instruction is
-    given it falls back to this module's built-in Secret Guardian rubric. The
-    transcript is labeled per turn and treated strictly as untrusted data.
-    Raises on infra or parse failure.
+    caller owns the rubric; this function owns the call. The transcript is
+    labeled per turn and treated strictly as untrusted data. Raises on infra or
+    parse failure.
 
     ``system_instruction`` is required. The caller (a scenario's grader, via
     ``Grader.judge_system_prompt``) decides how the judge grades. Keyword-only

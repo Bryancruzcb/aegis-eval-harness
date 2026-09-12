@@ -18,9 +18,9 @@ class Scenario:
     """A target setup plus the grader that scores it.
 
     ``load_cases`` must return cases that are already validated and defaulted
-    (as ``runner.load_test_cases`` does): ``run_suite`` filters on ``technique``
-    and segments the summary on ``expect``, so a loader that omits them would
-    raise rather than silently mis-report.
+    (as ``aegis_eval.harness.cases.load_test_cases`` does): ``run_suite``
+    filters on ``technique`` and segments the summary on ``expect``, so a
+    loader that omits them would raise rather than silently mis-report.
     """
     name: str
     system_prompt: str | None      # None => send the model no system prompt
