@@ -110,10 +110,24 @@ If the write-back has no landing blocker, merge PR #8.
 
 ## Layout write-back (GPT fills this)
 
-- Date:
+- Date: 2026-09-11
 - What you changed (files):
+  - `tests/test_import_layers.py`: fixed parent-relative and `from package import child` resolution, replaced the partial denylist with the architecture's exact allowlist, and added regressions for missed, unknown, and prefix-collision imports.
+  - `aegis_eval/workflows/grader_quality/quality_eval.py` and `tests/workflows/test_quality_eval.py`: incomplete checkpoints now reject a missing or changed `provenance_version` instead of being relabeled across the package-layout instrument boundary.
+  - `tests/workflows/test_compare_graders.py`: the frozen-variant test now executes the real legacy `from evaluators` and `from graders` imports and proves both aliases are installed.
+  - `aegis_eval/core/evaluators.py`, `aegis_eval/core/target.py`, and `aegis_eval/harness/scenarios.py`: removed a contradictory fallback claim, fixed the moved loader reference, and removed trailing whitespace.
+  - `README.md`: updated the verified offline test count after the new regression coverage.
 - Tests run:
+  - `C:\Users\isdis\git\aegis-eval\venv\Scripts\python.exe -m pytest -q` -> 418 passed.
+  - Import-layer, quality-identity, and frozen-variant targets -> 64 passed.
+  - All five root wrappers imported; all five `--help` commands exited 0; the output tree's paths and SHA-256 hashes were unchanged.
+  - `git diff --check` -> clean.
 - Findings:
-- Blocker for landing:
-- Merged PR #8?:
-- Do not do next:
+  - Fixed two real layout-test gaps: relative/imported-child resolution and incomplete DAG enforcement. The current package has no forbidden import edge.
+  - Fixed one layout-identity gap: incomplete quality checkpoints did not preserve `PROVENANCE_VERSION` as a frozen field.
+  - Verified the target tree, thin wrappers, repo-root `config.BASE_DIR`, stable-basename `find_spec` hashes, `aegis_eval.1` output paths, frozen snapshot aliases, and Secret Guardian policy placement against the real tree.
+  - The PR diff contains no `output/`, `.cache/`, `venv/`, `.env`, binary, or raw JBB/JAILJUDGE/XSTest payload addition. Dataset-named files are code/test moves; `data/test_cases.json` is a content-identical rename.
+  - Record only: `docs/superpowers/plans/2026-09-11-ml-engineer-program.md` retains historical pre-layout paths. It is outside this layout PR and does not block landing.
+- Blocker for landing: None.
+- Merged PR #8?: Approved to merge after this write-back commit is pushed and fresh GitHub checks pass; PR #8 is the source of truth for the final merge state.
+- Do not do next: Do not start `quality_eval.py`, edit or resume sealed unversioned checkpoints, adopt `SafetyGrader`, combine MCC contracts, or edit files under `output/`.
