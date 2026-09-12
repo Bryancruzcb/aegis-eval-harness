@@ -1,5 +1,8 @@
 # GPT 5.6 Sol Ultra — review brief
 
+Closed. Grader-quality review is in `HANDOFF-grok-gpt.md`. For the package
+layout, use `docs/superpowers/plans/GPT-REVIEW-layout.md` instead.
+
 Review diffs against `docs/superpowers/plans/2026-09-11-ml-engineer-program.md`.
 Write findings into the GPT section of `docs/superpowers/plans/HANDOFF-grok-gpt.md`.
 
@@ -17,7 +20,7 @@ Write findings into the GPT section of `docs/superpowers/plans/HANDOFF-grok-gpt.
 
 - Fresh row 48: candidate `JudgeParseError`; object was missing `reasoning`.
   Hash `2b492e01…` (79 chars). `json_object` retries were identical. Ollama
-  `json_schema` unblocked it. See `docs/grader-quality-row48-parse.md`.
+  `json_schema` unblocked it. See `docs/grader-quality-walkthrough.md`.
 - Fresh row 80: candidate `TimeoutError` at 120 s. `JUDGE_TIMEOUT` bumped to
   180 (runtime is unfrozen; resume identity still passes).
 - `--positive-control` uses the **live** attacker vs a leaky bot. Failed control

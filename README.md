@@ -38,7 +38,7 @@ python run.py --attacker adaptive --adaptive-cases 5 \
 ```
 
 Open the `report.html` it writes to `output/`. The full test suite is offline too —
-`pip install -r requirements-dev.txt && pytest` runs all 391 tests with no key.
+`pip install -r requirements-dev.txt && pytest` runs all 418 tests with no key.
 
 ## How it works
 
@@ -298,7 +298,7 @@ The frozen candidate was **not adopted** (`adopt_candidate: false`). Production 
 | harmless / legacy | 150 | 33 | 68 | 1 | 48 | 0.343 | 58.62% | 2.94% |
 | harmless / candidate | 150 | 17 | 4 | 17 | 112 | 0.562 | 3.45% | 50.00% |
 
-See the [implementation plan](docs/superpowers/plans/2026-09-08-grader-quality.md), [error audit](docs/grader-error-audit.json), and [quality walkthrough](docs/grader-quality-walkthrough.md). Candidate results and the adoption decision are reported separately from the existing production grader. Hosted Gemini sweeps and `experiments/refusal_grader_revised.py` are historical work under other contracts; they are not this experiment.
+See the [error audit](docs/grader-error-audit.json) and [quality walkthrough](docs/grader-quality-walkthrough.md). Candidate results and the adoption decision are reported separately from the existing production grader. Hosted Gemini sweeps and `experiments/refusal_grader_revised.py` are historical work under other contracts; they are not this experiment.
 
 Historical evidence is preserved in the [calibration history](docs/calibration-history.md), [rubric comparison](docs/judge-alignment-walkthrough.md), [screening ablation](docs/false-positive-ablation-walkthrough.md), and [three-model comparison](docs/gemini-37-comparison.md). These experiments have different cohorts and contracts; their MCC values must not be combined or presented as a single progression.
 
@@ -321,29 +321,31 @@ pytest
 The unit tests cover the evaluators, summary math, retry classification, report
 escaping, and the pass/fail/error routing — none of them touch the network, so
 they run offline and in CI (see `.github/workflows/ci.yml`). `pytest` currently
-collects 391 tests.
+collects 418 tests.
 
 ## Project layout
 
-| File | Responsibility |
+| Path | Responsibility |
 |------|----------------|
-| `run.py`          | CLI entry point, argument parsing, quality gate |
-| `runner.py`       | Async orchestration, per-case status, summary |
-| `target.py`       | The model under test + its guardian system prompt |
-| `evaluators.py`   | Deterministic checks + the LLM judge |
-| `graders.py`      | `Screen`/`Verdict` value objects, the `Grader` protocol, `SecretGuardianGrader` |
-| `refusal_grader.py` | The two-stage `RefusalGrader` for the refusal scenario |
-| `scenarios.py`    | The `Scenario` dataclass + the `SCENARIOS` registry (`secret-guardian`, `refusal`) |
-| `benchmarks/`     | Runtime fetch + verify + cache (`fetch.py`) and the JailbreakBench loader (`jbb.py`) |
-| `calibrate.py`    | Measures the refusal grader against JBB's human labels |
-| `providers.py`    | Shared clients, retry policy, error taxonomy |
-| `reporter.py`     | Terminal summary + HTML dashboard |
-| `test_cases.json` | The suite of prompts and expected criteria |
-| `config.py`       | Defaults and environment loading |
+| `run.py` | Wrapper for `aegis_eval.cli.run` |
+| `calibrate.py` | Wrapper for the JBB calibration workflow |
+| `compare_graders.py` | Wrapper for frozen grader comparison |
+| `quality_eval.py` | Wrapper for the local grader-quality experiment |
+| `quality_report.py` | Wrapper for the grader-quality report |
+| `aegis_eval/cli/run.py` | CLI parsing, quality gate, positive control |
+| `aegis_eval/harness/` | Scenarios, graders, runner, attackers, cases |
+| `aegis_eval/core/` | Config, providers, target query, judge I/O, lock |
+| `aegis_eval/benchmarks/` | JailbreakBench fetch and case loading |
+| `aegis_eval/reporter.py` | Terminal summary and HTML dashboard |
+| `aegis_eval/workflows/` | Calibration, grader-quality, hosted comparison |
+| `data/test_cases.json` | Secret Guardian suite prompts and criteria |
+| `experiments/` | Frozen snapshots, never imported by `aegis_eval` |
+
+See `docs/architecture.md` for the import DAG.
 
 ## Adding test cases
 
-Append an object to `test_cases.json`:
+Append an object to `data/test_cases.json`:
 
 ```json
 {

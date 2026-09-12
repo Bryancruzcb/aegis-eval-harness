@@ -4,11 +4,18 @@ Grok cannot message GPT. GPT cannot message Grok. Bryan is the bus.
 Write your result into this file or into git, then he pastes or points the other model at it.
 
 ## Repo
-- Path: `C:\Users\isdis\git\aegis-eval`
-- Branch: `codex/reduce-grader-false-positives` (dirty working tree)
+- Layout worktree (use this): `C:\Users\isdis\git\aegis-eval-organize`
+- Branch: `codex/organize-project-layout` (tracks origin). Merge-base is
+  `origin/main` `410cc04` (PR #7). Layout PR: https://github.com/Bryancruzcb/aegis-eval-harness/pull/8
+- Shared checkout: `C:\Users\isdis\git\aegis-eval` is clean `main` at `410cc04`.
+  Do not edit the layout from that folder.
+- Ignore leftover worktrees `aegis-eval-4.1-nonce` and `aegis-eval-phase22`
+  (both parked at `84c69f3`).
 - Remote: `github.com/Bryancruzcb/aegis-eval-harness`
-- Plan: `docs/superpowers/plans/2026-09-11-ml-engineer-program.md`
-- Review brief: `docs/superpowers/plans/GPT-REVIEW.md`
+- Layout spec: `docs/superpowers/specs/2026-09-11-project-layout-design.md`
+- Layout review brief: `docs/superpowers/plans/GPT-REVIEW-layout.md`
+- Grader-quality plan (closed): `docs/superpowers/plans/2026-09-11-ml-engineer-program.md`
+- Grader-quality review brief (closed): `docs/superpowers/plans/GPT-REVIEW.md`
 - Do not wipe `output/grader-quality/{dev,fresh,harmless}.json`
 
 ## Experiment result (Grok, 2026-09-11)
@@ -84,3 +91,43 @@ Sol: re-review this section and the diffs. GPT's write-back above is unchanged.
   - [P2] `quality_report.decision_paragraphs` / `power_note` derive from `adopt_candidate`, gates, and fresh intervals. Adopting fixture no longer says production stays legacy. Failed-gate fixture still does. Walkthrough now: "The development FNR increase is confirmed on fresh." 86.7% is annotator unanimity, not an MCC ceiling. Tests: existing adopting report test plus `test_report_prose_follows_a_failed_gate`.
 - Blocker for landing: none from the write-back list. Still do not land as one giant commit (plan Phase 6.1).
 - Do not do next: do not adopt `SafetyGrader`; do not mix MCC 0.20/0.38/0.77 with this contract; do not drop the FNR gate; do not wipe the checkpoints; do not start `quality_eval.py`; do not retune `HARM_PROMPT` / `BENIGN_PROMPT`.
+
+## Layout (Grok, 2026-09-11)
+
+PR #7 is on `main`. This branch was replayed onto that merge (`git rebase --onto origin/main 12883f4`). The snapshot commit was dropped because main already had those files. Zero conflicts. Merge-base is now `410cc04`.
+
+- Worktree: `C:\Users\isdis\git\aegis-eval-organize`
+- Branch: `codex/organize-project-layout` (PR #8). Do not force-push.
+  Merge PR #8 after a clean layout review with no landing blocker.
+- Tests: `C:\Users\isdis\git\aegis-eval\venv\Scripts\python.exe -m pytest -q` → 397 passed
+- CLI: `run.py`, `calibrate.py`, `compare_graders.py`, `quality_eval.py`, `quality_report.py` `--help` all parse and do not write
+- Identity: `PROVENANCE_VERSION=aegis_eval.1`. Hashes via `find_spec`. Frozen `output/*.py` still load through `sys.modules` aliases
+- New eval output would go to `output/grader-quality/aegis_eval.1/` and `output/hosted-comparison/aegis_eval.1/`. Sealed unversioned checkpoints were not rewritten
+- Brief: `docs/superpowers/plans/GPT-REVIEW-layout.md`
+
+GPT: review the layout only. Do not re-open the MCC/adopt_candidate review above.
+If the write-back has no landing blocker, merge PR #8.
+
+## Layout write-back (GPT fills this)
+
+- Date: 2026-09-11
+- What you changed (files):
+  - `tests/test_import_layers.py`: fixed parent-relative and `from package import child` resolution, replaced the partial denylist with the architecture's exact allowlist, and added regressions for missed, unknown, and prefix-collision imports.
+  - `aegis_eval/workflows/grader_quality/quality_eval.py` and `tests/workflows/test_quality_eval.py`: incomplete checkpoints now reject a missing or changed `provenance_version` instead of being relabeled across the package-layout instrument boundary.
+  - `tests/workflows/test_compare_graders.py`: the frozen-variant test now executes the real legacy `from evaluators` and `from graders` imports and proves both aliases are installed.
+  - `aegis_eval/core/evaluators.py`, `aegis_eval/core/target.py`, and `aegis_eval/harness/scenarios.py`: removed a contradictory fallback claim, fixed the moved loader reference, and removed trailing whitespace.
+  - `README.md`: updated the verified offline test count after the new regression coverage.
+- Tests run:
+  - `C:\Users\isdis\git\aegis-eval\venv\Scripts\python.exe -m pytest -q` -> 418 passed.
+  - Import-layer, quality-identity, and frozen-variant targets -> 64 passed.
+  - All five root wrappers imported; all five `--help` commands exited 0; the output tree's paths and SHA-256 hashes were unchanged.
+  - `git diff --check` -> clean.
+- Findings:
+  - Fixed two real layout-test gaps: relative/imported-child resolution and incomplete DAG enforcement. The current package has no forbidden import edge.
+  - Fixed one layout-identity gap: incomplete quality checkpoints did not preserve `PROVENANCE_VERSION` as a frozen field.
+  - Verified the target tree, thin wrappers, repo-root `config.BASE_DIR`, stable-basename `find_spec` hashes, `aegis_eval.1` output paths, frozen snapshot aliases, and Secret Guardian policy placement against the real tree.
+  - The PR diff contains no `output/`, `.cache/`, `venv/`, `.env`, binary, or raw JBB/JAILJUDGE/XSTest payload addition. Dataset-named files are code/test moves; `data/test_cases.json` is a content-identical rename.
+  - Record only: `docs/superpowers/plans/2026-09-11-ml-engineer-program.md` retains historical pre-layout paths. It is outside this layout PR and does not block landing.
+- Blocker for landing: None.
+- Merged PR #8?: Approved to merge after this write-back commit is pushed and fresh GitHub checks pass; PR #8 is the source of truth for the final merge state.
+- Do not do next: Do not start `quality_eval.py`, edit or resume sealed unversioned checkpoints, adopt `SafetyGrader`, combine MCC contracts, or edit files under `output/`.
