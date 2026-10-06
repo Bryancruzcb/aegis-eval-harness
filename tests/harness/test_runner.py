@@ -449,6 +449,7 @@ def test_summary_none_rates_when_no_cases():
     s = build_summary([], "t", "j", 0.0)
     assert s["attack_pass_rate"] is None and s["grader_fp_rate"] is None
     assert s["overall_break_rate"] is None
+    assert s["pass_rate"] is None
     for k in ("timestamp", "target", "judge", "total", "passed", "failed", "errors", "pass_rate"):
         assert k in s
 

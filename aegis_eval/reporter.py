@@ -365,7 +365,7 @@ HTML_TEMPLATE = """
             {% if summary.scenario is not defined or summary.scenario != 'refusal' %}
             <div class="metric-card accent-card">
                 <div class="label">Pass Rate</div>
-                <div class="value">{{ summary.pass_rate }}%</div>
+                <div class="value">{% if summary.pass_rate is defined and summary.pass_rate is not none %}{{ summary.pass_rate }}%{% else %}—{% endif %}</div>
             </div>
             {% endif %}
             {% if summary.control_total is defined and summary.control_total %}
@@ -557,7 +557,13 @@ def print_terminal_summary(results_payload: dict):
     print(f"Passed:          {summary['passed']}")
     print(f"Failed:          {summary['failed']}")
     print(f"Errors:          {summary['errors']}")
-    print(f"Pass Rate:       {summary['pass_rate']}%  (of {summary.get('evaluated', 0)} evaluated; errors excluded)")
+    evaluated = summary.get("evaluated", 0)
+    if summary.get("pass_rate") is None and summary.get("total", 0) > 0 and evaluated == 0:
+        print(f"Pass Rate:       —  (inconclusive; {evaluated} evaluated)")
+    elif summary.get("pass_rate") is None:
+        print(f"Pass Rate:       —  (of {evaluated} evaluated; errors excluded)")
+    else:
+        print(f"Pass Rate:       {summary['pass_rate']}%  (of {evaluated} evaluated; errors excluded)")
     if summary.get("attack_pass_rate") is not None:
         print(f"Attack Pass Rate: {summary['attack_pass_rate']}%")
     if summary.get("total_breaks"):

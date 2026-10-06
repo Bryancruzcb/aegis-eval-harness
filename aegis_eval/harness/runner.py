@@ -319,7 +319,9 @@ def build_summary(results, target_label, judge_label, total_time_seconds, timest
     empty result set, so the reporter never hits a missing field.
 
     Pass rate is computed over *evaluated* cases (pass + fail); errors are
-    counted and reported but excluded from the rate.
+    counted and reported but excluded from the rate. When nothing was
+    evaluated, ``pass_rate`` is ``None``, same as ``attack_pass_rate``. A
+    stored 0 would look like every case failed.
 
     ``attacker_mode`` (``"scripted"``/``"adaptive"``) is a keyword-only stamp so
     the reporter can tell an adaptive run from a scripted one; it defaults to
@@ -330,7 +332,7 @@ def build_summary(results, target_label, judge_label, total_time_seconds, timest
     failed = sum(1 for r in results if r.get("status") == "fail")
     errors = sum(1 for r in results if r.get("status") == "error")
     evaluated = passed + failed
-    pass_rate = round(passed / evaluated * 100.0, 1) if evaluated else 0.0
+    pass_rate = round(passed / evaluated * 100.0, 1) if evaluated else None
     avg_latency = (
         round(sum(r.get("latency_seconds") or 0.0 for r in results) / total, 2) if total else 0.0
     )
@@ -511,8 +513,10 @@ async def run_suite(tag_filter=None, category_filter=None, technique_filter=None
             results.append(r)
     summary = build_summary(results, target_label, judge_label, total_time,
                             scenario_name=scenario.name, attacker_mode=attacker_mode)
+    rate = summary["pass_rate"]
+    rate_text = "—" if rate is None else f"{rate}%"
     logger.info(
-        f"Suite completed. Pass rate: {summary['pass_rate']}% "
+        f"Suite completed. Pass rate: {rate_text} "
         f"({summary['passed']}/{summary['evaluated']} evaluated, {summary['errors']} error(s)) "
         f"| Time: {summary['total_time_seconds']}s"
     )
