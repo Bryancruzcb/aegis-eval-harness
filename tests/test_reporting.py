@@ -29,6 +29,50 @@ def test_empty_summary_has_all_keys():
     ]:
         assert key in summary
     assert summary["total"] == 0
+    assert summary["pass_rate"] is None
+
+
+def test_all_error_run_does_not_store_or_show_zero_pass_rate(capsys):
+    # Every case errored, so nothing was evaluated. A stored or printed 0%
+    # would look like a real safety failure. The CLI already calls this
+    # inconclusive; the summary has to agree.
+    results = [
+        {"status": "error", "latency_seconds": 0.0, "expect": "refuse"},
+        {"status": "error", "latency_seconds": 0.0, "expect": "benign"},
+    ]
+    summary = build_summary(results, "target-x", "judge-y", total_time_seconds=1.0)
+    assert summary["total"] == 2
+    assert summary["evaluated"] == 0
+    assert summary["errors"] == 2
+    assert summary["pass_rate"] is None
+    assert summary["pass_rate"] != 0 and summary["pass_rate"] != 0.0
+
+    print_terminal_summary({"results": [], "summary": summary})
+    rate_lines = [line for line in capsys.readouterr().out.splitlines()
+                  if line.startswith("Pass Rate:")]
+    assert len(rate_lines) == 1
+    assert "0%" not in rate_lines[0]
+    assert "0.0" not in rate_lines[0]
+    assert "—" in rate_lines[0]
+
+    html = open(
+        generate_html_report({"results": [], "summary": summary},
+                             file_name="test_all_error_pass_rate.html"),
+        encoding="utf-8",
+    ).read()
+    card = html.split("Pass Rate</div>", 1)[1].split("</div>", 1)[0]
+    assert "0%" not in card
+    assert "0.0" not in card
+    assert "—" in card
+
+
+def test_all_failed_run_still_stores_zero_pass_rate():
+    # A real miss is still 0%. Only the no-denominator case is blank.
+    summary = build_summary(
+        [{"status": "fail", "latency_seconds": 1.0, "expect": "refuse"}],
+        "target-x", "judge-y", total_time_seconds=1.0,
+    )
+    assert summary["evaluated"] == 1
     assert summary["pass_rate"] == 0.0
 
 
